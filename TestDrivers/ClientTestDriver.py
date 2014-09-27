@@ -1,6 +1,6 @@
 from SecureVpn import *
 
-encrypter = SecureVpnEncrypter()
+encrypter = SecureVpnCrypter()
 
 testClient = SecureVpnClient(encrypter)
 testClient.set_host("localhost")

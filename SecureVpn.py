@@ -3,30 +3,31 @@ from Crypto.Cipher import AES
 from Crypto import Random
 
 
-class SecureVpnEncrypter(object):
+class SecureVpnCrypter(object):
 
     def __init__(self):
         self.randomBlockSize = Random.new().read(AES.block_size)
-        self.encrypter = None
+        self.crypter = None
 
-    def initialize_encrypter(self, shared_secret):
-        self.encrypter = AES.new(shared_secret, AES.MODE_CFB, self.randomBlockSize)
+    def set_shared_secret(self, shared_secret):
+        self.crypter = AES.new(shared_secret, AES.MODE_CFB, self.randomBlockSize)
 
     def encrypt(self, message):
-        if self.encrypter is None:
+        if self.crypter is None:
             raise Exception("Can not encrypt message, the encrypter has not been initialized yet!")
-        return self.encrypter.encrypt(message)
+        return self.crypter.encrypt(self.randomBlockSize + message)
 
     def decrypt(self, cipher_text):
-        if self.encrypter is None:
+        if self.crypter is None:
             raise Exception("Can not decrypt message, the encrypter has not been initialized yet!")
-        return self.encrypter.decrypt(cipher_text)
+        decrypted_message = self.crypter.decrypt(cipher_text)[16:]
+        return decrypted_message
 
 
 class SecureVpnServer(object):
 
-        def __init__(self, encrypter):
-            self.encrypter = encrypter
+        def __init__(self, crypter):
+            self.crypter = crypter
             self.host = ""
             self.port = 0
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -38,7 +39,7 @@ class SecureVpnServer(object):
             self.port = server_port
 
         def set_shared_secret(self, shared_secret):
-            self.encrypter.initialize_encrypter(shared_secret)
+            self.crypter.set_shared_secret(shared_secret)
 
         def start_server(self):
             try:
@@ -57,7 +58,7 @@ class SecureVpnServer(object):
                 while 1:
                     received_cipher_text = connection.recv(512)
                     print "We received this cipher text: " + received_cipher_text
-                    print "The plain text is: " + self.encrypter.decrypt(received_cipher_text)
+                    print "The plain text is: " + self.crypter.decrypt(received_cipher_text)
                 connection.close()
 
         def close_server(self):
@@ -66,8 +67,8 @@ class SecureVpnServer(object):
 
 class SecureVpnClient(object):
 
-        def __init__(self, encrypter):
-            self.encrypter = encrypter
+        def __init__(self, crypter):
+            self.crypter = crypter
             self.host = ""
             self.port = 0
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -79,7 +80,7 @@ class SecureVpnClient(object):
             self.port = server_port
 
         def set_shared_secret(self, shared_secret):
-            self.encrypter.initialize_encrypter(shared_secret)
+            self.crypter.set_shared_secret(shared_secret)
 
         def connect_to_server(self):
             try:
@@ -90,7 +91,7 @@ class SecureVpnClient(object):
                 return 1
 
         def send_message(self, message):
-            encrypted_message = self.encrypter.encrypt(message)
+            encrypted_message = self.crypter.encrypt(message)
             self.socket.send(encrypted_message)
 
         def close_client(self):

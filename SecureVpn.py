@@ -1,4 +1,5 @@
 import socket
+import asyncore
 from Crypto.Cipher import AES
 from Crypto import Random
 
@@ -24,78 +25,99 @@ class SecureVpnCrypter(object):
         return decrypted_message
 
 
-class SecureVpnServer(object):
+class SecureSvnBase(asyncore.dispatcher):
 
-        def __init__(self, crypter):
-            self.crypter = crypter
-            self.host = ""
-            self.port = 0
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def __init__(self, host, port, crypter):
+        asyncore.dispatcher.__init__(self)
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.buffer = ""
+        self.crypter = crypter
+        self.host = host
+        self.port = port
 
-        def set_host(self, host):
-            self.host = host
+    def handle_connect(self):
+        pass
 
-        def set_port(self, server_port):
-            self.port = server_port
+    def handle_close(self):
+        self.close()
 
-        def set_shared_secret(self, shared_secret):
-            self.crypter.set_shared_secret(shared_secret)
+    def handle_read(self):
+        encrypted_text = self.recv(8192)
+        decrypted_text = self.crypter.decrypt(encrypted_text)
+        print "The received encrypted text is: " + encrypted_text
+        print "The received plain text is: " + decrypted_text
 
-        def start_server(self):
-            try:
-                self.socket.bind((self.host, self.port))
-            except socket.error as error_message:
-                print 'Bind failed. Error Code: ' + str(error_message[0]) + ' Message ' + error_message[1]
-            print 'Socket bind complete'
-            self.socket.listen(10)
-            print 'Socket now listening'
+    def writable(self):
+        return len(self.buffer) > 0
 
-        def wait_for_connection(self):
-            while 1:
-                try:
-                    connection, address = self.socket.accept()
-                    print 'Connected with ' + address[0] + ':' + str(address[1])
-                    connection.send("Welcome to the Secure Python VPN!")
-                    while 1:
-                        received_cipher_text = connection.recv(512)
-                        print "We received this cipher text: " + received_cipher_text
-                        print "The plain text is: " + self.crypter.decrypt(received_cipher_text)
-                    connection.close()
-                except socket.error as error_message:
-                    print 'There has been an error with the connection: ' + str(error_message[0]) + ' Message ' + error_message[1]
+    def handle_write(self):
+        buffer_to_send = self.buffer
+        sent = len(buffer_to_send)
+        self.send(buffer_to_send)
+        self.buffer = self.buffer[sent:]
 
-        def close_server(self):
-                self.socket.close()
+    def set_shared_secret(self, shared_secret):
+        self.crypter.set_shared_secret(shared_secret)
+
+    def send_message(self, message):
+        self.buffer += self.crypter.encrypt(message)
 
 
-class SecureVpnClient(object):
+class SecureSvnServer(SecureSvnBase):
 
-        def __init__(self, crypter):
-            self.crypter = crypter
-            self.host = ""
-            self.port = 0
-            self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def __init__(self, host, port, crypter):
+        SecureSvnBase.__init__(self, host, port, crypter)
+        self.set_reuse_addr()
+        self.bind((host, port))
+        self.listen(5)
+        self.handler = None
 
-        def set_host(self, host):
-            self.host = host
+    def handle_accept(self):
+        pair = self.accept()
+        if pair is not None:
+            socket, address = pair
+            print 'Incoming connection from %s' % repr(address)
+            self.handler = SecureSvnServerHandler(socket, self.crypter)
 
-        def set_port(self, server_port):
-            self.port = server_port
+    def send_message(self, message):
+        if self.handler is not None:
+            self.handler.send_message(message)
 
-        def set_shared_secret(self, shared_secret):
-            self.crypter.set_shared_secret(shared_secret)
 
-        def connect_to_server(self):
-            try:
-                self.socket.connect((self.host, self.port))
-                return 0
-            except socket.error as error_message:
-                print 'Connection failed. Error Code : ' + str(error_message[0]) + ' Message ' + error_message[1]
-                return 1
+class SecureSvnClient(SecureSvnBase):
 
-        def send_message(self, message):
-            encrypted_message = self.crypter.encrypt(message)
-            self.socket.send(encrypted_message)
+    def __init__(self, host, port, crypter):
+        SecureSvnBase.__init__(self, host, port, crypter)
+        self.connect((host, port))
 
-        def close_client(self):
-            self.socket.close()
+
+class SecureSvnServerHandler(asyncore.dispatcher_with_send):
+
+    def __init__(self, socket, crypter):
+        asyncore.dispatcher_with_send.__init__(self, socket)
+        self.crypter = crypter
+        self.buffer = ""
+
+    def handle_connect(self):
+        pass
+
+    def handle_close(self):
+        self.close()
+
+    def handle_read(self):
+        encrypted_text = self.recv(8192)
+        decrypted_text = self.crypter.decrypt(encrypted_text)
+        print "The received encrypted text is: " + encrypted_text
+        print "The received plain text is: " + decrypted_text
+
+    def writable(self):
+        return len(self.buffer) > 0
+
+    def handle_write(self):
+        buffer_to_send = self.buffer
+        sent = len(buffer_to_send)
+        self.send(buffer_to_send)
+        self.buffer = self.buffer[sent:]
+
+    def send_message(self, message):
+        self.buffer += self.crypter.encrypt(message)

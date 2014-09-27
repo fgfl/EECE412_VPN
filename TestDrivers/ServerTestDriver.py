@@ -1,12 +1,14 @@
 from SecureVpn import *
+import threading
 
 encrypter = SecureVpnCrypter()
 
-testServer = SecureVpnServer(encrypter)
-testServer.set_host("localhost")
-testServer.set_port(12345)
-testServer.set_shared_secret("ThisTHISTestTEST")
+server = SecureSvnServer('localhost', 12345, encrypter)
+server.set_shared_secret("TestTESTPassPASS")
 
-testServer.start_server()
-testServer.wait_for_connection()
-testServer.close_socket()
+loop_thread = threading.Thread(target=asyncore.loop, name="Asyncore Loop")
+loop_thread.start()
+
+while 1:
+    message = raw_input("")
+    server.send_message(message)

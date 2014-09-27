@@ -45,21 +45,24 @@ class SecureVpnServer(object):
             try:
                 self.socket.bind((self.host, self.port))
             except socket.error as error_message:
-                print 'Bind failed. Error Code : ' + str(error_message[0]) + ' Message ' + error_message[1]
+                print 'Bind failed. Error Code: ' + str(error_message[0]) + ' Message ' + error_message[1]
             print 'Socket bind complete'
             self.socket.listen(10)
             print 'Socket now listening'
 
         def wait_for_connection(self):
             while 1:
-                connection, address = self.socket.accept()
-                print 'Connected with ' + address[0] + ':' + str(address[1])
-                connection.send("Welcome to the Secure Python VPN!")
-                while 1:
-                    received_cipher_text = connection.recv(512)
-                    print "We received this cipher text: " + received_cipher_text
-                    print "The plain text is: " + self.crypter.decrypt(received_cipher_text)
-                connection.close()
+                try:
+                    connection, address = self.socket.accept()
+                    print 'Connected with ' + address[0] + ':' + str(address[1])
+                    connection.send("Welcome to the Secure Python VPN!")
+                    while 1:
+                        received_cipher_text = connection.recv(512)
+                        print "We received this cipher text: " + received_cipher_text
+                        print "The plain text is: " + self.crypter.decrypt(received_cipher_text)
+                    connection.close()
+                except socket.error as error_message:
+                    print 'There has been an error with the connection: ' + str(error_message[0]) + ' Message ' + error_message[1]
 
         def close_server(self):
                 self.socket.close()

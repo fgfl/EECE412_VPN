@@ -51,7 +51,7 @@ class SecureSvnBase(asyncore.dispatcher):
         return len(self.buffer) > 0
 
     def handle_write(self):
-        buffer_to_send = self.buffer
+        buffer_to_send = self.crypter.encrypt(self.buffer)
         sent = len(buffer_to_send)
         self.send(buffer_to_send)
         self.buffer = self.buffer[sent:]
@@ -60,7 +60,7 @@ class SecureSvnBase(asyncore.dispatcher):
         self.crypter.set_shared_secret(shared_secret)
 
     def send_message(self, message):
-        self.buffer += self.crypter.encrypt(message)
+        self.buffer += message
 
 
 class SecureSvnServer(SecureSvnBase):
@@ -114,10 +114,10 @@ class SecureSvnServerHandler(asyncore.dispatcher_with_send):
         return len(self.buffer) > 0
 
     def handle_write(self):
-        buffer_to_send = self.buffer
+        buffer_to_send = self.crypter.encrypt(self.buffer)
         sent = len(buffer_to_send)
         self.send(buffer_to_send)
         self.buffer = self.buffer[sent:]
 
     def send_message(self, message):
-        self.buffer += self.crypter.encrypt(message)
+        self.buffer += message

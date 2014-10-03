@@ -119,7 +119,7 @@ class SecureSvnClient(SecureSvnBase):
 
 class SecureSvnServerHandler(SecureSvnBase):
 
-    renegotiation_time = 5
+    renegotiation_time = 10
 
     def __init__(self, crypter, negotiator, sock):
         SecureSvnBase.__init__(self, crypter, negotiator)

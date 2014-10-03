@@ -1,7 +1,9 @@
 import socket
 import asyncore
 from Crypto.Cipher import AES
+from Crypto.Hash import SHA256
 from Crypto import Random
+from SessionKeyNegotiator import *
 
 
 class SecureVpnCrypter(object):
@@ -9,9 +11,11 @@ class SecureVpnCrypter(object):
     def __init__(self):
         self.randomBlockSize = Random.new().read(AES.block_size)
         self.crypter = None
+        self.hasher = SHA256.new()
 
     def set_shared_secret(self, shared_secret):
-        self.crypter = AES.new(shared_secret, AES.MODE_CFB, self.randomBlockSize)
+        self.hasher.update(shared_secret)
+        self.crypter = AES.new(self.hasher.digest(), AES.MODE_CFB, self.randomBlockSize)
 
     def encrypt(self, message):
         if self.crypter is None:

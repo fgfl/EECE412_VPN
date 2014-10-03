@@ -4,7 +4,7 @@ import threading
 encrypter = SecureVpnCrypter()
 
 server = SecureSvnServer('localhost', 12345, encrypter)
-server.set_shared_secret("TestTESTPassPASS")
+server.set_shared_secret("asdfasdfasdfasdfasdfasdf")
 
 
 loop_thread = threading.Thread(target= asyncore.loop, name="Asyncore Loop")

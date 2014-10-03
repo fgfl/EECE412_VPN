@@ -1,9 +1,11 @@
 from SecureVpn import *
 import threading
+from SessionKeyNegotiator import *
 
 encrypter = SecureVpnCrypter()
+negotiator = SessionKeyNegotiator()
 
-client = SecureSvnClient('localhost', 12345, encrypter)
+client = SecureSvnClient(encrypter, negotiator, 'localhost', 12345)
 client.set_shared_secret("asdfasdfasdfasdfasdfasdf")
 
 loop_thread = threading.Thread(target=asyncore.loop, name="Asyncore Loop", )

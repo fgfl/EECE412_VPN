@@ -13,7 +13,9 @@ class SessionKeyNegotiator(object):
 
     def get_public_key(self):
         self.generate_private_key()
-        return pow(SessionKeyNegotiator.generator, self.private_key, SessionKeyNegotiator.prime)
+        public = pow(SessionKeyNegotiator.generator, self.private_key, SessionKeyNegotiator.prime)
+        return public
 
     def get_session_key(self, negotiation_response):
-        return pow(negotiation_response, self.private_key, SessionKeyNegotiator.prime)
+        session = pow(long(negotiation_response), self.private_key, SessionKeyNegotiator.prime)
+        return session

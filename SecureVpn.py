@@ -1,9 +1,37 @@
 import socket
 import asyncore
+import asynchat
 from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from Crypto import Random
-from SessionKeyNegotiator import *
+import threading
+
+
+class MessageManager(object):
+
+    NEGOTIATION_MESSAGE = "N"
+    DATA_MESSAGE = "D"
+    MESSAGE_DELIMITER = ";;"
+
+    @staticmethod
+    def parse_message(message):
+        split_message = message.split(MessageManager.MESSAGE_DELIMITER)
+        message_length = len(split_message)
+        parsed_list = []
+        i = 0
+        while i < message_length - 1:
+            parsed_list.append((split_message[i], split_message[i+1]))
+            i += 2
+        return parsed_list
+
+    @staticmethod
+    def create_message(message):
+        message.replace(MessageManager.MESSAGE_DELIMITER, "")
+        return MessageManager.DATA_MESSAGE + MessageManager.MESSAGE_DELIMITER + message + MessageManager.MESSAGE_DELIMITER
+
+    @staticmethod
+    def create_negotiation_message(public_key):
+        return MessageManager.NEGOTIATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + public_key + MessageManager.MESSAGE_DELIMITER
 
 
 class SecureVpnCrypter(object):
@@ -14,7 +42,7 @@ class SecureVpnCrypter(object):
         self.hasher = SHA256.new()
 
     def set_shared_secret(self, shared_secret):
-        self.hasher.update(shared_secret)
+        self.hasher.update(str(shared_secret))
         self.crypter = AES.new(self.hasher.digest(), AES.MODE_CFB, self.randomBlockSize)
 
     def encrypt(self, message):
@@ -29,48 +57,112 @@ class SecureVpnCrypter(object):
         return decrypted_message
 
 
-class SecureSvnBase(asyncore.dispatcher):
+class SecureSvnBase(asynchat.async_chat):
 
-    def __init__(self, host, port, crypter):
-        asyncore.dispatcher.__init__(self)
-        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.buffer = ""
+    def __init__(self, crypter, negotiator):
+        asynchat.async_chat.__init__(self)
+        self.received_data = ''
         self.crypter = crypter
-        self.host = host
-        self.port = port
+        self.negotiator = negotiator
+        self.set_terminator(MessageManager.MESSAGE_DELIMITER)
 
-    def handle_connect(self):
-        pass
+    def collect_incoming_data(self, data):
+        self.received_data += data
 
-    def handle_close(self):
-        self.close()
+    def found_terminator(self):
+        self.process_message()
 
-    def handle_read(self):
-        encrypted_text = self.recv(8192)
-        decrypted_text = self.crypter.decrypt(encrypted_text)
-        print "The received encrypted text is: " + encrypted_text
-        print "The received plain text is: " + decrypted_text
+    def send_negotiation(self, public_key):
+        self.send(self.crypter.encrypt(MessageManager.create_negotiation_message(str(public_key))) + MessageManager.MESSAGE_DELIMITER)
 
-    def writable(self):
-        return len(self.buffer) > 0
-
-    def handle_write(self):
-        buffer_to_send = self.crypter.encrypt(self.buffer)
-        sent = len(buffer_to_send)
-        self.send(buffer_to_send)
-        self.buffer = self.buffer[sent:]
+    def send_message(self, message):
+        self.send(self.crypter.encrypt(MessageManager.create_message(message)) + MessageManager.MESSAGE_DELIMITER)
 
     def set_shared_secret(self, shared_secret):
         self.crypter.set_shared_secret(shared_secret)
 
-    def send_message(self, message):
-        self.buffer += message
+
+class SecureSvnClient(SecureSvnBase):
+
+    def __init__(self, crypter, negotiator, host, port):
+        SecureSvnBase.__init__(self, crypter, negotiator)
+        self.host = host
+        self.port = port
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.connect((host, port))
+
+    def process_message(self):
+
+        encrypted_text = self.received_data
+        decrypted_text = self.crypter.decrypt(encrypted_text)
+
+        messages = MessageManager.parse_message(decrypted_text)
+
+        for message in messages:
+            message_type, content = message
+
+            if message_type == MessageManager.DATA_MESSAGE:
+                print "The received plain text is: " + content
+
+            elif message_type == MessageManager.NEGOTIATION_MESSAGE:
+                new_public_key = self.negotiator.get_public_key()
+                self.send_negotiation(new_public_key)
+                print "Sending Negotiation With Key:"
+                print new_public_key
+                print "Received Public Key: " + content
+                new_session_key = self.negotiator.get_session_key(content)
+                self.crypter.set_shared_secret(new_session_key)
+                print "Received Negotiation. New Session Key Is:"
+                print new_session_key
+        self.received_data = ''
 
 
-class SecureSvnServer(SecureSvnBase):
+class SecureSvnServerHandler(SecureSvnBase):
 
-    def __init__(self, host, port, crypter):
-        SecureSvnBase.__init__(self, host, port, crypter)
+    renegotiation_time = 5
+
+    def __init__(self, crypter, negotiator, sock):
+        SecureSvnBase.__init__(self, crypter, negotiator)
+        self.set_socket(sock)
+        self.initiate_key_negotiation()
+
+    def process_message(self):
+        encrypted_text = self.received_data
+        decrypted_text = self.crypter.decrypt(encrypted_text)
+
+        messages = MessageManager.parse_message(decrypted_text)
+
+        for message in messages:
+            message_type, content = message
+
+            if message_type == MessageManager.DATA_MESSAGE:
+                print "The received plain text is: " + content
+
+            elif message_type == MessageManager.NEGOTIATION_MESSAGE:
+                print "Received Public Key: " + content
+                new_session_key = self.negotiator.get_session_key(content)
+                self.crypter.set_shared_secret(new_session_key)
+                print "Received Negotiation. New Session Key Is:"
+                print new_session_key
+        self.received_data = ''
+
+    def initiate_key_negotiation(self):
+        new_public_key = self.negotiator.get_public_key()
+        self.send_negotiation(new_public_key)
+        print "Sending Negotiation With Key:"
+        print new_public_key
+        threading.Timer(SecureSvnServerHandler.renegotiation_time, self.initiate_key_negotiation).start()
+
+
+class SecureSvnServer(asyncore.dispatcher):
+
+    def __init__(self, host, port, crypter, negotiator):
+        asyncore.dispatcher.__init__(self)
+        self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.crypter = crypter
+        self.host = host
+        self.port = port
+        self.negotiator = negotiator
         self.set_reuse_addr()
         self.bind((host, port))
         self.listen(5)
@@ -79,49 +171,13 @@ class SecureSvnServer(SecureSvnBase):
     def handle_accept(self):
         pair = self.accept()
         if pair is not None:
-            socket, address = pair
+            sock, address = pair
             print 'Incoming connection from %s' % repr(address)
-            self.handler = SecureSvnServerHandler(socket, self.crypter)
+            self.handler = SecureSvnServerHandler(self.crypter, self.negotiator, sock)
 
     def send_message(self, message):
         if self.handler is not None:
             self.handler.send_message(message)
 
-
-class SecureSvnClient(SecureSvnBase):
-
-    def __init__(self, host, port, crypter):
-        SecureSvnBase.__init__(self, host, port, crypter)
-        self.connect((host, port))
-
-
-class SecureSvnServerHandler(asyncore.dispatcher_with_send):
-
-    def __init__(self, socket, crypter):
-        asyncore.dispatcher_with_send.__init__(self, socket)
-        self.crypter = crypter
-        self.buffer = ""
-
-    def handle_connect(self):
-        pass
-
-    def handle_close(self):
-        self.close()
-
-    def handle_read(self):
-        encrypted_text = self.recv(8192)
-        decrypted_text = self.crypter.decrypt(encrypted_text)
-        print "The received encrypted text is: " + encrypted_text
-        print "The received plain text is: " + decrypted_text
-
-    def writable(self):
-        return len(self.buffer) > 0
-
-    def handle_write(self):
-        buffer_to_send = self.crypter.encrypt(self.buffer)
-        sent = len(buffer_to_send)
-        self.send(buffer_to_send)
-        self.buffer = self.buffer[sent:]
-
-    def send_message(self, message):
-        self.buffer += message
+    def set_shared_secret(self, shared_secret):
+        self.crypter.set_shared_secret(shared_secret)

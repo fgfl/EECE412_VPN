@@ -5,13 +5,14 @@ from Crypto.Cipher import AES
 from Crypto.Hash import SHA256
 from Crypto import Random
 import threading
+import mutex
 
 
 class MessageManager(object):
 
     NEGOTIATION_MESSAGE = "N"
     DATA_MESSAGE = "D"
-    MESSAGE_DELIMITER = ";;"
+    MESSAGE_DELIMITER = "~~~~~~~"
 
     @staticmethod
     def parse_message(message):
@@ -65,6 +66,7 @@ class SecureSvnBase(asynchat.async_chat):
         self.crypter = crypter
         self.negotiator = negotiator
         self.set_terminator(MessageManager.MESSAGE_DELIMITER)
+        self.negotiation_lock = mutex.mutex()
 
     def collect_incoming_data(self, data):
         self.received_data += data
@@ -76,7 +78,10 @@ class SecureSvnBase(asynchat.async_chat):
         self.send(self.crypter.encrypt(MessageManager.create_negotiation_message(str(public_key))) + MessageManager.MESSAGE_DELIMITER)
 
     def send_message(self, message):
+        while not self.negotiation_lock.testandset():
+            None
         self.send(self.crypter.encrypt(MessageManager.create_message(message)) + MessageManager.MESSAGE_DELIMITER)
+        self.negotiation_lock.unlock()
 
     def set_shared_secret(self, shared_secret):
         self.crypter.set_shared_secret(shared_secret)
@@ -96,6 +101,8 @@ class SecureSvnClient(SecureSvnBase):
         encrypted_text = self.received_data
         decrypted_text = self.crypter.decrypt(encrypted_text)
 
+        print "RAW CONTENT: " + decrypted_text
+
         messages = MessageManager.parse_message(decrypted_text)
 
         for message in messages:
@@ -105,21 +112,24 @@ class SecureSvnClient(SecureSvnBase):
                 print "The received plain text is: " + content
 
             elif message_type == MessageManager.NEGOTIATION_MESSAGE:
-                new_public_key = self.negotiator.get_public_key()
-                self.send_negotiation(new_public_key)
-                print "Sending Negotiation With Key:"
-                print new_public_key
-                print "Received Public Key: " + content
-                new_session_key = self.negotiator.get_session_key(content)
-                self.crypter.set_shared_secret(new_session_key)
-                print "Received Negotiation. New Session Key Is:"
-                print new_session_key
+                self.handle_negotiation(content)
+
         self.received_data = ''
 
+    def handle_negotiation(self, public_key):
+        while not self.negotiation_lock.testandset():
+            None
+        new_public_key = self.negotiator.get_public_key()
+        self.send_negotiation(new_public_key)
+        new_session_key = self.negotiator.get_session_key(public_key)
+        self.crypter.set_shared_secret(new_session_key)
+        print "Received Negotiation. New Session Key Is:"
+        print new_session_key
+        self.negotiation_lock.unlock()
 
 class SecureSvnServerHandler(SecureSvnBase):
 
-    renegotiation_time = 10
+    renegotiation_time = 20
 
     def __init__(self, crypter, negotiator, sock):
         SecureSvnBase.__init__(self, crypter, negotiator)
@@ -130,7 +140,10 @@ class SecureSvnServerHandler(SecureSvnBase):
         encrypted_text = self.received_data
         decrypted_text = self.crypter.decrypt(encrypted_text)
 
+        print "RAW CONTENT: " + decrypted_text
+
         messages = MessageManager.parse_message(decrypted_text)
+
 
         for message in messages:
             message_type, content = message
@@ -139,14 +152,20 @@ class SecureSvnServerHandler(SecureSvnBase):
                 print "The received plain text is: " + content
 
             elif message_type == MessageManager.NEGOTIATION_MESSAGE:
-                print "Received Public Key: " + content
-                new_session_key = self.negotiator.get_session_key(content)
-                self.crypter.set_shared_secret(new_session_key)
-                print "Received Negotiation. New Session Key Is:"
-                print new_session_key
+                self.receive_negotiation(content)
+
         self.received_data = ''
 
+    def receive_negotiation(self, public_key):
+        new_session_key = self.negotiator.get_session_key(public_key)
+        self.crypter.set_shared_secret(new_session_key)
+        print "Received Negotiation. New Session Key Is:"
+        print new_session_key
+        self.negotiation_lock.unlock()
+
     def initiate_key_negotiation(self):
+        while not self.negotiation_lock.testandset():
+            None
         new_public_key = self.negotiator.get_public_key()
         self.send_negotiation(new_public_key)
         print "Sending Negotiation With Key:"

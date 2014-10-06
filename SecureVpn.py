@@ -6,13 +6,16 @@ from Crypto.Hash import SHA256
 from Crypto import Random
 import threading
 import mutex
+import datetime
 
 
 class MessageManager(object):
 
     NEGOTIATION_MESSAGE = "N"
+    NEGOTIATION_CONFIRMATION_MESSAGE = "NC"
+    NEGOTIATION_INITIALIZATION_MESSAGE = "NI"
     DATA_MESSAGE = "D"
-    MESSAGE_DELIMITER = "~~~~~~~"
+    MESSAGE_DELIMITER = "------------"
 
     @staticmethod
     def parse_message(message):
@@ -34,6 +37,13 @@ class MessageManager(object):
     def create_negotiation_message(public_key):
         return MessageManager.NEGOTIATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + public_key + MessageManager.MESSAGE_DELIMITER
 
+    @staticmethod
+    def create_negotiation_confirmation_message():
+        return MessageManager.NEGOTIATION_CONFIRMATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + MessageManager.MESSAGE_DELIMITER
+
+    @staticmethod
+    def create_negotiation_initialization_message():
+        return MessageManager.NEGOTIATION_INITIALIZATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + MessageManager.MESSAGE_DELIMITER
 
 class SecureVpnCrypter(object):
 
@@ -77,11 +87,16 @@ class SecureSvnBase(asynchat.async_chat):
     def send_negotiation(self, public_key):
         self.send(self.crypter.encrypt(MessageManager.create_negotiation_message(str(public_key))) + MessageManager.MESSAGE_DELIMITER)
 
+    def confirm_negotiation(self):
+        self.send(self.crypter.encrypt(MessageManager.create_negotiation_confirmation_message()) + MessageManager.MESSAGE_DELIMITER)
+
+    def initialize_negotiation(self):
+        self.send(self.crypter.encrypt(MessageManager.create_negotiation_initialization_message()) + MessageManager.MESSAGE_DELIMITER)
+
     def send_message(self, message):
-        while not self.negotiation_lock.testandset():
+        while self.negotiation_lock.locked:
             None
         self.send(self.crypter.encrypt(MessageManager.create_message(message)) + MessageManager.MESSAGE_DELIMITER)
-        self.negotiation_lock.unlock()
 
     def set_shared_secret(self, shared_secret):
         self.crypter.set_shared_secret(shared_secret)
@@ -101,8 +116,6 @@ class SecureSvnClient(SecureSvnBase):
         encrypted_text = self.received_data
         decrypted_text = self.crypter.decrypt(encrypted_text)
 
-        print "RAW CONTENT: " + decrypted_text
-
         messages = MessageManager.parse_message(decrypted_text)
 
         for message in messages:
@@ -114,22 +127,28 @@ class SecureSvnClient(SecureSvnBase):
             elif message_type == MessageManager.NEGOTIATION_MESSAGE:
                 self.handle_negotiation(content)
 
+            elif message_type == MessageManager.NEGOTIATION_CONFIRMATION_MESSAGE:
+                self.handle_negotiation_confirmation()
+
+            elif message_type == MessageManager.NEGOTIATION_INITIALIZATION_MESSAGE:
+                while not self.negotiation_lock.testandset():
+                    None
+
         self.received_data = ''
 
+    def handle_negotiation_confirmation(self):
+        self.negotiation_lock.unlock()
+
     def handle_negotiation(self, public_key):
-        while not self.negotiation_lock.testandset():
-            None
         new_public_key = self.negotiator.get_public_key()
         self.send_negotiation(new_public_key)
         new_session_key = self.negotiator.get_session_key(public_key)
         self.crypter.set_shared_secret(new_session_key)
-        print "Received Negotiation. New Session Key Is:"
-        print new_session_key
-        self.negotiation_lock.unlock()
+        print "Received Negotiation. New Session Key Is: " + str(new_session_key)
 
 class SecureSvnServerHandler(SecureSvnBase):
 
-    renegotiation_time = 20
+    renegotiation_time = 10
 
     def __init__(self, crypter, negotiator, sock):
         SecureSvnBase.__init__(self, crypter, negotiator)
@@ -137,19 +156,18 @@ class SecureSvnServerHandler(SecureSvnBase):
         self.initiate_key_negotiation()
 
     def process_message(self):
+
         encrypted_text = self.received_data
         decrypted_text = self.crypter.decrypt(encrypted_text)
 
-        print "RAW CONTENT: " + decrypted_text
-
         messages = MessageManager.parse_message(decrypted_text)
-
 
         for message in messages:
             message_type, content = message
 
             if message_type == MessageManager.DATA_MESSAGE:
-                print "The received plain text is: " + content
+                if not self.negotiation_lock.locked:
+                    print "The received plain text is: " + content
 
             elif message_type == MessageManager.NEGOTIATION_MESSAGE:
                 self.receive_negotiation(content)
@@ -159,17 +177,17 @@ class SecureSvnServerHandler(SecureSvnBase):
     def receive_negotiation(self, public_key):
         new_session_key = self.negotiator.get_session_key(public_key)
         self.crypter.set_shared_secret(new_session_key)
-        print "Received Negotiation. New Session Key Is:"
-        print new_session_key
+        print "Received Negotiation. New Session Key Is: " + str(new_session_key)
+        self.confirm_negotiation()
         self.negotiation_lock.unlock()
 
     def initiate_key_negotiation(self):
+        self.initialize_negotiation()
         while not self.negotiation_lock.testandset():
             None
         new_public_key = self.negotiator.get_public_key()
         self.send_negotiation(new_public_key)
-        print "Sending Negotiation With Key:"
-        print new_public_key
+        print "Sending Negotiation With Key: " + str(new_public_key)
         threading.Timer(SecureSvnServerHandler.renegotiation_time, self.initiate_key_negotiation).start()
 
 

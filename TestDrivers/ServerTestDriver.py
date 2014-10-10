@@ -13,5 +13,4 @@ loop_thread.start()
 
 while 1:
     message = raw_input("")
-    server.continue_progress()
-    #server.send_message(message)
+    server.send_message(message)

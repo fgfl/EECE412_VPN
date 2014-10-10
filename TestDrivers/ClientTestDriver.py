@@ -13,5 +13,4 @@ loop_thread.start()
 
 while 1:
     message = raw_input("")
-    client.continue_progress()
-    #client.send_message(message)
+    client.send_message(message)

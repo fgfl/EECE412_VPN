@@ -3,7 +3,7 @@ import threading
 from SessionKeyNegotiator import *
 
 encrypter = SecureVpnCrypter()
-negotiator = SessionKeyNegotiator()
+negotiator = SessionKeyNegotiator("CLIENT")
 
 client = SecureSvnClient(encrypter, negotiator, 'localhost', 12345)
 client.set_shared_secret("asdfasdfasdfasdfasdfasdf")

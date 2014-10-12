@@ -11,11 +11,14 @@ import datetime
 
 class MessageManager(object):
 
+    CHALLENGE = "C"
     NEGOTIATION_MESSAGE = "N"
+    NEGOTIATION_CHALLENGE = "NCH"
     NEGOTIATION_CONFIRMATION_MESSAGE = "NC"
     NEGOTIATION_INITIALIZATION_MESSAGE = "NI"
     DATA_MESSAGE = "D"
     MESSAGE_DELIMITER = "------------"
+    MULTI_MESSAGE_DELIMITER = "!!!!!!!!!!!!!!!!"
 
     @staticmethod
     def parse_message(message):
@@ -34,10 +37,6 @@ class MessageManager(object):
         return MessageManager.DATA_MESSAGE + MessageManager.MESSAGE_DELIMITER + message + MessageManager.MESSAGE_DELIMITER
 
     @staticmethod
-    def create_negotiation_message(public_key):
-        return MessageManager.NEGOTIATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + public_key + MessageManager.MESSAGE_DELIMITER
-
-    @staticmethod
     def create_negotiation_confirmation_message():
         return MessageManager.NEGOTIATION_CONFIRMATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + MessageManager.MESSAGE_DELIMITER
 
@@ -45,7 +44,24 @@ class MessageManager(object):
     def create_negotiation_initialization_message():
         return MessageManager.NEGOTIATION_INITIALIZATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + MessageManager.MESSAGE_DELIMITER
 
+    @staticmethod
+    def create_challenge_message(negotiator):
+         return MessageManager.CHALLENGE + MessageManager.MESSAGE_DELIMITER + negotiator.get_challenge() + MessageManager.MESSAGE_DELIMITER
+
+    @staticmethod
+    def create_challenge_response_message(negotiator, shared_secret):
+        newChallenge, response = negotiator.get_challenge_response(shared_secret)
+        responseMessage = MessageManager.NEGOTIATION_CHALLENGE + MessageManager.MESSAGE_DELIMITER + str(response) + MessageManager.MESSAGE_DELIMITER
+        challengeMessage = MessageManager.CHALLENGE + MessageManager.MESSAGE_DELIMITER + str(newChallenge) + MessageManager.MESSAGE_DELIMITER
+        return challengeMessage, responseMessage
+
+    @staticmethod
+    def create_challenge_negotiation_message(negotiator, shared_secret):
+        return MessageManager.NEGOTIATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + negotiator.get_challenge_negotiation(shared_secret) + MessageManager.MESSAGE_DELIMITER
+
 class SecureVpnCrypter(object):
+
+    encryptionTag = "EEEEEEEE"
 
     def __init__(self):
         self.crypter = None
@@ -64,12 +80,18 @@ class SecureVpnCrypter(object):
         if self.crypter is None:
             raise Exception("Can not encrypt message, the encrypter has not been initialized yet!")
         self.apply_new_iv()
-        return self.crypter.encrypt(self.randomBlockSize + message)
+        return SecureVpnCrypter.encryptionTag + str(self.crypter.encrypt(self.randomBlockSize + message))
 
     def decrypt(self, cipher_text):
         if self.crypter is None:
             raise Exception("Can not decrypt message, the encrypter has not been initialized yet!")
-        decrypted_message = self.crypter.decrypt(cipher_text)[16:]
+
+        decrypted_message = cipher_text
+
+        if str(cipher_text[0:len(SecureVpnCrypter.encryptionTag)]) == SecureVpnCrypter.encryptionTag:
+            trimmed_message = cipher_text[len(SecureVpnCrypter.encryptionTag):]
+            decrypted_message = self.crypter.decrypt(trimmed_message)[16:]
+
         return decrypted_message
 
 
@@ -80,8 +102,10 @@ class SecureSvnBase(asynchat.async_chat):
         self.received_data = ''
         self.crypter = crypter
         self.negotiator = negotiator
-        self.set_terminator(MessageManager.MESSAGE_DELIMITER)
+        self.set_terminator(MessageManager.MULTI_MESSAGE_DELIMITER)
         self.negotiation_lock = mutex.mutex()
+        self.progress_lock = mutex.mutex()
+        self.in_step_through_mode = False
         self.shared_secret = ""
 
     def collect_incoming_data(self, data):
@@ -90,24 +114,58 @@ class SecureSvnBase(asynchat.async_chat):
     def found_terminator(self):
         self.process_message()
 
-    def send_negotiation(self, public_key):
-        self.send(self.crypter.encrypt(MessageManager.create_negotiation_message(str(public_key) + str(self.shared_secret))) + MessageManager.MESSAGE_DELIMITER)
+    def append_message_delimiters(self, message):
+        return message + MessageManager.MULTI_MESSAGE_DELIMITER
+
+    def send_challenge(self):
+        self.wait_and_begin_progress()
+        self.send(self.append_message_delimiters(MessageManager.create_challenge_message(self.negotiator)))
+
+    def send_challenge_response(self):
+        self.wait_and_begin_progress()
+        challengeMessage, responseMessage = MessageManager.create_challenge_response_message(self.negotiator, self.shared_secret)
+        self.send(self.append_message_delimiters(challengeMessage))
+        self.send(self.append_message_delimiters(self.crypter.encrypt(responseMessage)))
+
+    def send_challenge_negotiation(self):
+        self.wait_and_begin_progress()
+        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_challenge_negotiation_message(self.negotiator, self.shared_secret))))
 
     def confirm_negotiation(self):
-        self.send(self.crypter.encrypt(MessageManager.create_negotiation_confirmation_message()) + MessageManager.MESSAGE_DELIMITER)
+        self.wait_and_begin_progress()
+        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_negotiation_confirmation_message())))
 
     def initialize_negotiation(self):
-        self.send(self.crypter.encrypt(MessageManager.create_negotiation_initialization_message()) + MessageManager.MESSAGE_DELIMITER)
+        self.wait_and_begin_progress()
+        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_negotiation_initialization_message())))
 
     def send_message(self, message):
-        while self.negotiation_lock.locked:
-            None
-        self.send(self.crypter.encrypt(MessageManager.create_message(message)) + MessageManager.MESSAGE_DELIMITER)
+        self.wait_and_begin_progress()
+        self.wait_for_negotiation()
+        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_message(message))))
 
     def set_shared_secret(self, shared_secret):
         self.shared_secret = shared_secret
         self.crypter.set_shared_secret(shared_secret)
 
+    def wait_and_begin_progress(self):
+        if self.in_step_through_mode:
+            while not self.progress_lock.testandset():
+                None
+
+    def continue_progress(self):
+        self.progress_lock.unlock()
+
+    def wait_and_begin_negotiation(self):
+        while not self.negotiation_lock.testandset():
+            None
+
+    def wait_for_negotiation(self):
+        while self.negotiation_lock.locked:
+            None
+
+    def toggle_step_through_mode(self):
+        self.in_step_through_mode = not self.in_step_through_mode
 
 class SecureSvnClient(SecureSvnBase):
 
@@ -131,10 +189,17 @@ class SecureSvnClient(SecureSvnBase):
             if message_type == MessageManager.DATA_MESSAGE:
                 print "The received plain text is: " + content
 
-            elif message_type == MessageManager.NEGOTIATION_MESSAGE:
-                key_stop_index = len(str(content)) - len(str(self.shared_secret))
-                public_key = content[0:key_stop_index]
-                self.handle_negotiation(public_key)
+            elif message_type == MessageManager.CHALLENGE:
+                self.negotiator.record_challenge(content)
+
+            elif message_type == MessageManager.NEGOTIATION_CHALLENGE:
+                print "Negotiation is: " + str(content)
+                if self.negotiator.validate_response(content, self.shared_secret):
+                    self.send_challenge_negotiation()
+                    self.set_shared_secret(self.negotiator.get_session_key(content))
+                else:
+                    print "INVALID - DISCONNECTING"
+                    self.socket.close()
 
             elif message_type == MessageManager.NEGOTIATION_CONFIRMATION_MESSAGE:
                 self.handle_negotiation_confirmation()
@@ -142,18 +207,13 @@ class SecureSvnClient(SecureSvnBase):
             elif message_type == MessageManager.NEGOTIATION_INITIALIZATION_MESSAGE:
                 while not self.negotiation_lock.testandset():
                     None
+                self.send_challenge()
 
         self.received_data = ''
 
     def handle_negotiation_confirmation(self):
         self.negotiation_lock.unlock()
 
-    def handle_negotiation(self, public_key):
-        new_public_key = self.negotiator.get_public_key()
-        self.send_negotiation(new_public_key)
-        new_session_key = self.negotiator.get_session_key(public_key)
-        self.set_shared_secret(new_session_key)
-        print "Received Negotiation. New Session Key Is: " + str(new_session_key)
 
 class SecureSvnServerHandler(SecureSvnBase):
 
@@ -179,27 +239,28 @@ class SecureSvnServerHandler(SecureSvnBase):
                 if not self.negotiation_lock.locked:
                     print "The received plain text is: " + content
 
+            elif message_type == MessageManager.CHALLENGE:
+                print "Challenge is: " + str(content)
+                self.negotiator.record_challenge(content)
+                self.send_challenge_response()
+
             elif message_type == MessageManager.NEGOTIATION_MESSAGE:
-                key_stop_index = len(str(content)) - len(str(self.shared_secret))
-                public_key = content[0:key_stop_index]
-                self.receive_negotiation(public_key)
+                print "Negotiation is: " + str(content)
+                if self.negotiator.validate_response(content, self.shared_secret):
+                    self.set_shared_secret(self.negotiator.get_session_key(content))
+                    self.confirm_negotiation()
+                    self.negotiation_lock.unlock()
+                else:
+                    print "INVALID - DISCONNECTING"
+                    self.socket.close()
 
         self.received_data = ''
 
-    def receive_negotiation(self, public_key):
-        new_session_key = self.negotiator.get_session_key(public_key)
-        self.set_shared_secret(new_session_key)
-        print "Received Negotiation. New Session Key Is: " + str(new_session_key)
-        self.confirm_negotiation()
-        self.negotiation_lock.unlock()
-
     def initiate_key_negotiation(self):
+        self.wait_for_negotiation()
+        print "Initializing negotiation..."
         self.initialize_negotiation()
-        while not self.negotiation_lock.testandset():
-            None
-        new_public_key = self.negotiator.get_public_key()
-        self.send_negotiation(new_public_key)
-        print "Sending Negotiation With Key: " + str(new_public_key)
+        self.wait_and_begin_negotiation()
         threading.Timer(SecureSvnServerHandler.renegotiation_time, self.initiate_key_negotiation).start()
 
 
@@ -232,3 +293,6 @@ class SecureSvnServer(asyncore.dispatcher):
     def set_shared_secret(self, shared_secret):
         self.shared_secret = shared_secret
         self.crypter.set_shared_secret(shared_secret)
+
+    def continue_progress(self):
+        self.handler.continue_progress()

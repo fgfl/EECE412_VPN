@@ -8,6 +8,9 @@ __author__ = 'Frederick'
 # October 10, 2014
 
 import Tkinter
+from SecureVpn import *
+import threading
+from SessionKeyNegotiator import *
 
 y_bottom_padding = (0, 10)
 x_right_padding = (0, 5)
@@ -25,6 +28,8 @@ class VPNWindow(Tkinter.Tk):
         self.parent = parent
         self.initializeFrameContainer()
 
+        self.vpn_client = None
+        self.initial_key = None
 
     def initializeFrameContainer(self):
         self.grid()
@@ -38,20 +43,36 @@ class VPNWindow(Tkinter.Tk):
         container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
-        for F in (startPage, svrConfigPage, svrWaitPage, clientConfigPage,
+        for F in (startPage, svnConfigPage, svnWaitPage, clientConfigPage,
                   messagingPage):
             frame = F(container, self)
             self.frames[F] = frame
             frame.grid(row=0, column=0, sticky="NSEW")
 
         self.show_frame(startPage)
-        #self.show_frame(svrConfigPage)
-        #self.show_frame(svrWaitPage)
-        #self.show_frame(clientConfigPage)
 
     def show_frame(self, f):
         frame = self.frames[f]
         frame.tkraise()
+
+
+    def set_key(self, key):
+        self.initial_key = key
+
+    def get_key(self):
+        return self.initial_key
+
+    def set_vpn(self, vpn):
+        self.vpn_client = vpn
+
+    def send_vpn_message(self, message):
+        self.vpn_client.send_message(message)
+
+    def log_message(self, message):
+        pass
+
+    def log_debug(self, debug):
+        pass
 
 
 class startPage(Tkinter.Frame):
@@ -162,8 +183,9 @@ class startPage(Tkinter.Frame):
     def onConnectClick(self, controller):
         if self.keyEntry.get() == "":
             return
+        controller.set_key(self.keyEntry.get())
         if self.svrCheckBoxState.get():
-            controller.show_frame(svrConfigPage)
+            controller.show_frame(svnConfigPage)
         elif self.clientCheckBoxState.get():
             controller.show_frame(clientConfigPage)
 
@@ -171,7 +193,7 @@ class startPage(Tkinter.Frame):
         self.keyEntry.focus_set()
         self.keyEntry.selection_range(0, Tkinter.END)
 
-class svrConfigPage(Tkinter.Frame):
+class svnConfigPage(Tkinter.Frame):
     def __init__(self, parent, controller):
         Tkinter.Frame.__init__(self, parent)
         self.parent = parent
@@ -220,8 +242,8 @@ class svrConfigPage(Tkinter.Frame):
         portLine.grid_columnconfigure(1, weight=1)
         portPrompt = Tkinter.Label(portLine, text="Port:")
         portPrompt.grid(column=0, row=0, padx=x_right_padding, sticky="W")
-        portBox = Tkinter.Entry(portLine)
-        portBox.grid(column=1, row=0, sticky="EW")
+        self.portBox = Tkinter.Entry(portLine)
+        self.portBox.grid(column=1, row=0, sticky="EW")
         # Connect/Cancel button line
         connectButtonLine = Tkinter.Frame(appFrame)
         connectButtonLine.grid(column=0, row=2, sticky="EW")
@@ -236,13 +258,23 @@ class svrConfigPage(Tkinter.Frame):
         cancelButton.grid(column=1, row=0)
 
     def onConnectClick(self, controller):
-        controller.show_frame(svrWaitPage)
+        encrypter = SecureVpnCrypter()
+        negotiator = SessionKeyNegotiator("SERVER")
+        server = SecureSvnServer('localhost', int(self.portBox.get()), encrypter, negotiator)
+        server.set_shared_secret(controller.get_key())
+        controller.set_key("")
+        controller.set_vpn(server)
+        loop_thread = threading.Thread(target= asyncore.loop, name="Asyncore Loop")
+        loop_thread.start()
+        controller.frames[messagingPage].init_loggers(controller)
+        #controller.show_frame(svnWaitPage)messagingPage
+        controller.show_frame(messagingPage)
 
     def onCancelClick(self, controller):
         controller.show_frame(startPage)
 
 
-class svrWaitPage(Tkinter.Frame):
+class svnWaitPage(Tkinter.Frame):
     def __init__(self, parent, controller):
         Tkinter.Frame.__init__(self, parent)
         self.parent = parent
@@ -364,12 +396,12 @@ class clientConfigPage(Tkinter.Frame):
         enterInfoFrame.grid_columnconfigure(1, weight=1)
         ipLabel = Tkinter.Label(enterInfoFrame, text="IP:")
         ipLabel.grid(column=0, row=0,  padx=x_right_padding, sticky="W")
-        ipEntryBox = Tkinter.Entry(enterInfoFrame)
-        ipEntryBox.grid(column=1, row=0, sticky="EW")
+        self.ipEntryBox = Tkinter.Entry(enterInfoFrame)
+        self.ipEntryBox.grid(column=1, row=0, sticky="EW")
         portLabel = Tkinter.Label(enterInfoFrame, text="Port:")
         portLabel.grid(column=0, row=1, padx=x_right_padding, sticky="W")
-        portEntryBox = Tkinter.Entry(enterInfoFrame)
-        portEntryBox.grid(column=1, row=1, sticky="EW")
+        self.portEntryBox = Tkinter.Entry(enterInfoFrame)
+        self.portEntryBox.grid(column=1, row=1, sticky="EW")
         # Connect button and cancel button line
         buttonsFrame = Tkinter.Frame(appFrame)
         buttonsFrame.grid(column=0, row=3, sticky="EW")
@@ -385,6 +417,15 @@ class clientConfigPage(Tkinter.Frame):
         cancelButton.grid(column=1, row=0)
 
     def onConnectClick(self, controller):
+        encrypter = SecureVpnCrypter()
+        negotiator = SessionKeyNegotiator("CLIENT")
+        client = SecureSvnClient(encrypter, negotiator, self.ipEntryBox.get(), int(self.portEntryBox.get()))
+        client.set_shared_secret(controller.get_key())
+        controller.set_key("")
+        controller.set_vpn(client)
+        loop_thread = threading.Thread(target= asyncore.loop, name="Asyncore Loop")
+        loop_thread.start()
+        controller.frames[messagingPage].init_loggers(controller)
         controller.show_frame(messagingPage)
 
     def onCancelClick(self, controller):
@@ -401,7 +442,6 @@ class messagingPage(Tkinter.Frame):
 
         # Debug side panel
         self.debugString = Tkinter.StringVar()
-        self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
         debugFrame.grid(column=1, row=0, sticky="NSEW")
         debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
@@ -439,12 +479,12 @@ class messagingPage(Tkinter.Frame):
                                                minsize=debugBoxWidth)
         conversationFrame.grid_rowconfigure(0, weight=1,
                                             minsize=debugBoxWidth)
-        conversationHist = Tkinter.Message(conversationFrame,
+        self.conversationHist = Tkinter.Message(conversationFrame,
                                            textvariable=self.passedMessages,
                                            anchor="w",
                                            bg="white",
                                            fg="black")
-        conversationHist.grid(column=0, row=0, padx=x_right_padding,
+        self.conversationHist.grid(column=0, row=0, padx=x_right_padding,
                               sticky="NEWS")
         disconnectButton = \
             Tkinter.Button(conversationFrame,
@@ -455,20 +495,35 @@ class messagingPage(Tkinter.Frame):
         buttonFrame = Tkinter.Frame(appFrame)
         buttonFrame.grid(column=0, row=1, sticky="EW")
         buttonFrame.grid_columnconfigure(0, weight=1)
-        enterMessageBox = Tkinter.Entry(buttonFrame)
-        enterMessageBox.grid(column=0, row=0, padx=x_right_padding,
+        self.enterMessageBox = Tkinter.Entry(buttonFrame)
+        self.enterMessageBox.grid(column=0, row=0, padx=x_right_padding,
                              sticky="EW")
-        sendButton = Tkinter.Button(buttonFrame, text="Send")
+        sendButton = Tkinter.Button(buttonFrame, text="Send", command=lambda: self.onSendClick(controller))
         sendButton.grid(column=1, row=0, sticky="EW")
         buttonFrame.grid_columnconfigure(1, minsize=minButtonSize)
 
     def onDisconnectClick(self, controller):
         controller.show_frame(startPage)
 
-    def onSendClick(self):
-        pass
+    def onSendClick(self, controller):
+        controller.send_vpn_message(self.enterMessageBox.get())
+        self.enterMessageBox.delete(0, len(self.enterMessageBox.get()))
+
+    def log(self, message):
+        #newMessage = self.passedMessages.get() + "\n" + message
+        self.passedMessages.set(message)
+
+    def debug(self, message):
+        #newMessage = self.debugString.get() + "\n" + message
+        self.debugString.set(message)
+
+    def init_loggers(self, controller):
+        controller.vpn_client.set_logger(lambda message: self.log(message))
+        controller.vpn_client.set_debugger(lambda message: self.debug(message))
 
 if __name__ == "__main__":
     app = VPNWindow(None)
     app.title("Assignment 3 VPN")
-    app.mainloop()
+
+    loop_thread = threading.Thread(target= app.mainloop, name="UI Loop")
+    loop_thread.start()

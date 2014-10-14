@@ -108,6 +108,23 @@ class SecureSvnBase(asynchat.async_chat):
         self.in_step_through_mode = False
         self.shared_secret = ""
 
+        self.logger = None
+        self.debugger = None
+
+    def set_logger(self, logger):
+        self.logger = logger
+
+    def set_debugger(self, debugger):
+        self.debugger = debugger
+
+    def log(self, message):
+        if self.logger is not None:
+            self.logger(message)
+
+    def debug(self, message):
+        if self.debugger is not None:
+            self.debugger(message)
+
     def collect_incoming_data(self, data):
         self.received_data += data
 
@@ -179,6 +196,7 @@ class SecureSvnClient(SecureSvnBase):
     def process_message(self):
 
         encrypted_text = self.received_data
+        self.debug(encrypted_text)
         decrypted_text = self.crypter.decrypt(encrypted_text)
 
         messages = MessageManager.parse_message(decrypted_text)
@@ -187,6 +205,7 @@ class SecureSvnClient(SecureSvnBase):
             message_type, content = message
 
             if message_type == MessageManager.DATA_MESSAGE:
+                self.log("The received plain text is: " + content)
                 print "The received plain text is: " + content
 
             elif message_type == MessageManager.CHALLENGE:
@@ -194,10 +213,12 @@ class SecureSvnClient(SecureSvnBase):
 
             elif message_type == MessageManager.NEGOTIATION_CHALLENGE:
                 print "Negotiation is: " + str(content)
+                self.log("Negotiation is: " + str(content))
                 if self.negotiator.validate_response(content, self.shared_secret):
                     self.send_challenge_negotiation()
                     self.set_shared_secret(self.negotiator.get_session_key(content))
                 else:
+                    self.log("INVALID - DISCONNECTING")
                     print "INVALID - DISCONNECTING"
                     self.socket.close()
 
@@ -217,7 +238,7 @@ class SecureSvnClient(SecureSvnBase):
 
 class SecureSvnServerHandler(SecureSvnBase):
 
-    renegotiation_time = 10
+    renegotiation_time = 20
 
     def __init__(self, crypter, negotiator, sock, shared_secret):
         SecureSvnBase.__init__(self, crypter, negotiator)
@@ -228,6 +249,8 @@ class SecureSvnServerHandler(SecureSvnBase):
     def process_message(self):
 
         encrypted_text = self.received_data
+        self.debug(encrypted_text)
+
         decrypted_text = self.crypter.decrypt(encrypted_text)
 
         messages = MessageManager.parse_message(decrypted_text)
@@ -236,21 +259,24 @@ class SecureSvnServerHandler(SecureSvnBase):
             message_type, content = message
 
             if message_type == MessageManager.DATA_MESSAGE:
-                if not self.negotiation_lock.locked:
-                    print "The received plain text is: " + content
+                self.log("The received plain text is: " + content)
+                print "The received plain text is: " + content
 
             elif message_type == MessageManager.CHALLENGE:
+                self.log("Challenge is: " + str(content))
                 print "Challenge is: " + str(content)
                 self.negotiator.record_challenge(content)
                 self.send_challenge_response()
 
             elif message_type == MessageManager.NEGOTIATION_MESSAGE:
+                self.log("Negotiation is: " + str(content))
                 print "Negotiation is: " + str(content)
                 if self.negotiator.validate_response(content, self.shared_secret):
                     self.set_shared_secret(self.negotiator.get_session_key(content))
                     self.confirm_negotiation()
                     self.negotiation_lock.unlock()
                 else:
+                    self.log("INVALID - DISCONNECTING")
                     print "INVALID - DISCONNECTING"
                     self.socket.close()
 
@@ -278,6 +304,8 @@ class SecureSvnServer(asyncore.dispatcher):
         self.listen(5)
         self.handler = None
         self.shared_secret = ""
+        self.logger = None
+        self.debugger = None
 
     def handle_accept(self):
         pair = self.accept()
@@ -285,6 +313,8 @@ class SecureSvnServer(asyncore.dispatcher):
             sock, address = pair
             print 'Incoming connection from %s' % repr(address)
             self.handler = SecureSvnServerHandler(self.crypter, self.negotiator, sock, self.shared_secret)
+            self.handler.set_logger(self.logger)
+            self.handler.set_debugger(self.debugger)
 
     def send_message(self, message):
         if self.handler is not None:
@@ -296,3 +326,9 @@ class SecureSvnServer(asyncore.dispatcher):
 
     def continue_progress(self):
         self.handler.continue_progress()
+
+    def set_logger(self, logger):
+        self.logger = logger
+
+    def set_debugger(self, debugger):
+        self.debugger = debugger

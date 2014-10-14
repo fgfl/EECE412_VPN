@@ -14,6 +14,8 @@ x_right_padding = (0, 5)
 debugBoxWidth = 500
 enableDebugString = "Enable debug"
 wrapTextLength = 250
+minButtonSize = 70
+
 
 
 class VPNWindow(Tkinter.Tk):
@@ -42,10 +44,10 @@ class VPNWindow(Tkinter.Tk):
             self.frames[F] = frame
             frame.grid(row=0, column=0, sticky="NSEW")
 
-        #self.show_frame(startPage)
-        # self.show_frame(svrConfigPage)
+        self.show_frame(startPage)
+        #self.show_frame(svrConfigPage)
         #self.show_frame(svrWaitPage)
-        self.show_frame(clientConfigPage)
+        #self.show_frame(clientConfigPage)
 
     def show_frame(self, f):
         frame = self.frames[f]
@@ -61,6 +63,7 @@ class startPage(Tkinter.Frame):
     def initializeStartPage(self, controller):
         self.svrCheckBoxState = Tkinter.IntVar()
         self.clientCheckBoxState = Tkinter.IntVar()
+        self.ipAddress = Tkinter.StringVar()
 
         self.grid(sticky="NSEW")
         self.grid_rowconfigure(0, weight=1)
@@ -70,16 +73,29 @@ class startPage(Tkinter.Frame):
         self.debugString = Tkinter.StringVar()
         self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, rowspan=10, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth)
+        debugFrame.grid(column=1, row=0, sticky="NSEW")
+        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
+        debugFrame.grid_rowconfigure(0, weight=1)
         debugMessageBox = Tkinter.Message(debugFrame,
                                           textvariable=self.debugString,
                                           anchor="w",
                                           bg="black",
                                           fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NSEW")
+        debugMessageBox.grid(column=0, row=0, sticky="NW")
         debugMessageBox.grid_propagate(0)
         debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
+        # Debug enable line
+        debugLine = Tkinter.Frame(debugFrame)
+        debugLine.grid(column=0, row=1, sticky="SW")
+        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
+        debugCheckBox.grid()
+        # Step button
+        stepButtonFrame = Tkinter.Frame(debugFrame)
+        stepButtonFrame.grid(column=1, row=1, sticky="SE")
+        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
+        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
+        stepButton.grid(sticky="EW")
+
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
         appFrame.grid(column=0, row=0, padx=x_right_padding, sticky="EW")
@@ -92,11 +108,6 @@ class startPage(Tkinter.Frame):
         headerSpace = Tkinter.Label(instructionLine, text=self.headerText,
                                     fg="black")
         headerSpace.grid(column=0, row=0, pady=y_bottom_padding, sticky="SEW")
-        # Debug enable line
-        debugLine = Tkinter.Frame(appFrame)
-        debugLine.grid(column=0, row=1, sticky="W")
-        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
-        debugCheckBox.grid()
         # Mode check buttons
         buttonLine = Tkinter.Frame(appFrame)
         buttonLine.grid(column=0, row=2, pady=y_bottom_padding, sticky="EW")
@@ -126,7 +137,8 @@ class startPage(Tkinter.Frame):
         keyPrompt = Tkinter.Label(enterKeyLine, text=u"Key:")
         keyPrompt.grid(column=0, row=0, pady=y_bottom_padding,
                        padx=x_right_padding, sticky="W")
-        self.keyEntry = Tkinter.Entry(enterKeyLine)
+        self.keyEntry = Tkinter.Entry(enterKeyLine, textvariable=self.ipAddress)
+        self.keyEntry.config(show="*")
         self.keyEntry.grid(column=1, row=0, sticky="EW")
         # Line for connect button
         connectLine = Tkinter.Frame(appFrame)
@@ -139,18 +151,25 @@ class startPage(Tkinter.Frame):
 
     def onServerClick(self):
         """ Only allow one to be selected """
-        print self.svrCheckBoxState.get()
         self.clientModeButton.deselect()
+        self.setKeyEntryFocus()
 
     def onClientClick(self):
         """ Only allow one to be selected """
         self.serverModeButton.deselect()
+        self.setKeyEntryFocus()
 
     def onConnectClick(self, controller):
+        if self.keyEntry.get() == "":
+            return
         if self.svrCheckBoxState.get():
             controller.show_frame(svrConfigPage)
         elif self.clientCheckBoxState.get():
             controller.show_frame(clientConfigPage)
+
+    def setKeyEntryFocus(self):
+        self.keyEntry.focus_set()
+        self.keyEntry.selection_range(0, Tkinter.END)
 
 class svrConfigPage(Tkinter.Frame):
     def __init__(self, parent, controller):
@@ -167,27 +186,34 @@ class svrConfigPage(Tkinter.Frame):
         self.debugString = Tkinter.StringVar()
         self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, rowspan=10, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth)
+        debugFrame.grid(column=1, row=0, sticky="NSEW")
+        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
+        debugFrame.grid_rowconfigure(0, weight=1)
         debugMessageBox = Tkinter.Message(debugFrame,
                                           textvariable=self.debugString,
                                           anchor="w",
                                           bg="black",
                                           fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NSEW")
+        debugMessageBox.grid(column=0, row=0, sticky="NW")
         debugMessageBox.grid_propagate(0)
         debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
+        # Debug enable line
+        debugLine = Tkinter.Frame(debugFrame)
+        debugLine.grid(column=0, row=1, sticky="SW")
+        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
+        debugCheckBox.grid()
+        # Step button
+        stepButtonFrame = Tkinter.Frame(debugFrame)
+        stepButtonFrame.grid(column=1, row=1, sticky="SE")
+        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
+        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
+        stepButton.grid(sticky="EW")
 
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
         appFrame.grid(column=0, row=0, padx=x_right_padding, sticky="EW")
         appFrame.grid_columnconfigure(0, weight=1)
         appFrame.grid_rowconfigure(0, weight=1)
-        # Debug Button Line
-        debugLine = Tkinter.Frame(appFrame)
-        debugLine.grid(column=0, row=0, sticky="EW")
-        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
-        debugCheckBox.grid(sticky="W")
         # Enter port line
         portLine = Tkinter.Frame(appFrame)
         portLine.grid(column=0, row=1, sticky="EW")
@@ -231,16 +257,28 @@ class svrWaitPage(Tkinter.Frame):
         self.debugString = Tkinter.StringVar()
         self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, rowspan=10, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth)
+        debugFrame.grid(column=1, row=0, sticky="NSEW")
+        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
+        debugFrame.grid_rowconfigure(0, weight=1)
         debugMessageBox = Tkinter.Message(debugFrame,
                                           textvariable=self.debugString,
                                           anchor="w",
                                           bg="black",
                                           fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NSEW")
+        debugMessageBox.grid(column=0, row=0, sticky="NW")
         debugMessageBox.grid_propagate(0)
         debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
+        # Debug enable line
+        debugLine = Tkinter.Frame(debugFrame)
+        debugLine.grid(column=0, row=1, sticky="SW")
+        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
+        debugCheckBox.grid()
+        # Step button
+        stepButtonFrame = Tkinter.Frame(debugFrame)
+        stepButtonFrame.grid(column=1, row=1, sticky="SE")
+        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
+        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
+        stepButton.grid(sticky="EW")
 
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
@@ -278,20 +316,32 @@ class clientConfigPage(Tkinter.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Debug side panel
+        ## Debug side panel
         self.debugString = Tkinter.StringVar()
         self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, rowspan=10, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth)
+        debugFrame.grid(column=1, row=0, sticky="NSEW")
+        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
+        debugFrame.grid_rowconfigure(0, weight=1)
         debugMessageBox = Tkinter.Message(debugFrame,
                                           textvariable=self.debugString,
                                           anchor="w",
                                           bg="black",
                                           fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NSEW")
+        debugMessageBox.grid(column=0, row=0, sticky="NW")
         debugMessageBox.grid_propagate(0)
         debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
+        # Debug enable line
+        debugLine = Tkinter.Frame(debugFrame)
+        debugLine.grid(column=0, row=1, sticky="SW")
+        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
+        debugCheckBox.grid()
+        # Step button
+        stepButtonFrame = Tkinter.Frame(debugFrame)
+        stepButtonFrame.grid(column=1, row=1, sticky="SE")
+        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
+        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
+        stepButton.grid(sticky="EW")
 
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
@@ -353,16 +403,28 @@ class messagingPage(Tkinter.Frame):
         self.debugString = Tkinter.StringVar()
         self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, rowspan=10, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth)
+        debugFrame.grid(column=1, row=0, sticky="NSEW")
+        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
+        debugFrame.grid_rowconfigure(0, weight=1)
         debugMessageBox = Tkinter.Message(debugFrame,
                                           textvariable=self.debugString,
                                           anchor="w",
                                           bg="black",
                                           fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NSEW")
+        debugMessageBox.grid(column=0, row=0, sticky="NW")
         debugMessageBox.grid_propagate(0)
         debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
+        # Debug enable line
+        debugLine = Tkinter.Frame(debugFrame)
+        debugLine.grid(column=0, row=1, sticky="SW")
+        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
+        debugCheckBox.grid()
+        # Step button
+        stepButtonFrame = Tkinter.Frame(debugFrame)
+        stepButtonFrame.grid(column=1, row=1, sticky="SE")
+        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
+        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
+        stepButton.grid(sticky="EW")
 
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
@@ -389,7 +451,7 @@ class messagingPage(Tkinter.Frame):
                            text="Disconnect",
                            command=lambda: self.onDisconnectClick(controller))
         disconnectButton.grid(column=1, row=0, sticky="S")
-        # Send and disconnect button frame
+        # Send button and message box frame
         buttonFrame = Tkinter.Frame(appFrame)
         buttonFrame.grid(column=0, row=1, sticky="EW")
         buttonFrame.grid_columnconfigure(0, weight=1)
@@ -397,7 +459,8 @@ class messagingPage(Tkinter.Frame):
         enterMessageBox.grid(column=0, row=0, padx=x_right_padding,
                              sticky="EW")
         sendButton = Tkinter.Button(buttonFrame, text="Send")
-        sendButton.grid(column=1, row=0)
+        sendButton.grid(column=1, row=0, sticky="EW")
+        buttonFrame.grid_columnconfigure(1, minsize=minButtonSize)
 
     def onDisconnectClick(self, controller):
         controller.show_frame(startPage)

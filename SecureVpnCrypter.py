@@ -13,7 +13,7 @@ class SecureVpnCrypter(object):
         self.integrity_hasher_encrypt = SHA256.new()
 
     def set_shared_secret(self, shared_secret):
-        self.secret_hasher.update(str(shared_secret))
+        self.secret_hasher = SHA256.new(str(shared_secret))
         self.apply_new_iv()
 
     def apply_new_iv(self):

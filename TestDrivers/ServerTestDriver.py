@@ -1,6 +1,7 @@
 from SecureVpn import *
 import threading
 from SessionKeyNegotiator import *
+from SecureVpnCrypter import *
 
 encrypter = SecureVpnCrypter()
 negotiator = SessionKeyNegotiator("SERVER")

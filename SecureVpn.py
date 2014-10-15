@@ -6,12 +6,12 @@ from Crypto.Hash import SHA256
 from Crypto import Random
 import threading
 import mutex
-import datetime
 
 
 class MessageManager(object):
 
     CHALLENGE = "C"
+    INTEGRITY_HASH = "I"
     NEGOTIATION_MESSAGE = "N"
     NEGOTIATION_CHALLENGE = "NCH"
     NEGOTIATION_CONFIRMATION_MESSAGE = "NC"
@@ -49,6 +49,10 @@ class MessageManager(object):
          return MessageManager.CHALLENGE + MessageManager.MESSAGE_DELIMITER + negotiator.get_challenge() + MessageManager.MESSAGE_DELIMITER
 
     @staticmethod
+    def create_integrity_message(hash):
+         return MessageManager.INTEGRITY_HASH + MessageManager.MESSAGE_DELIMITER + hash + MessageManager.MESSAGE_DELIMITER
+
+    @staticmethod
     def create_challenge_response_message(negotiator, shared_secret):
         newChallenge, response = negotiator.get_challenge_response(shared_secret)
         responseMessage = MessageManager.NEGOTIATION_CHALLENGE + MessageManager.MESSAGE_DELIMITER + str(response) + MessageManager.MESSAGE_DELIMITER
@@ -65,24 +69,35 @@ class SecureVpnCrypter(object):
 
     def __init__(self):
         self.crypter = None
-        self.randomBlockSize = Random.new().read(AES.block_size)
-        self.hasher = SHA256.new()
+        self.iv = Random.new().read(AES.block_size)
+        self.secret_hasher = SHA256.new()
+        self.integrity_hasher_decrypt = SHA256.new()
+        self.integrity_hasher_encrypt = SHA256.new()
 
     def set_shared_secret(self, shared_secret):
-        self.hasher.update(str(shared_secret))
+        self.secret_hasher.update(str(shared_secret))
         self.apply_new_iv()
 
     def apply_new_iv(self):
-        self.randomBlockSize = Random.new().read(AES.block_size)
-        self.crypter = AES.new(self.hasher.digest(), AES.MODE_CFB, self.randomBlockSize)
+        self.iv = Random.new().read(AES.block_size)
+        self.crypter = AES.new(self.secret_hasher.digest(), AES.MODE_CFB, self.iv)
 
     def encrypt(self, message):
         if self.crypter is None:
             raise Exception("Can not encrypt message, the encrypter has not been initialized yet!")
         self.apply_new_iv()
-        return SecureVpnCrypter.encryptionTag + str(self.crypter.encrypt(self.randomBlockSize + message))
 
-    def decrypt(self, cipher_text):
+        encrypted_message = str(self.crypter.encrypt(message))
+
+        self.integrity_hasher_encrypt = SHA256.new(str(message))
+        integrity_hash = self.integrity_hasher_encrypt.digest()
+
+        print "Message: " + message
+        print "Hash: " + integrity_hash
+
+        return integrity_hash, SecureVpnCrypter.encryptionTag + self.iv + encrypted_message
+
+    def decrypt(self, cipher_text, integrity_hash):
         if self.crypter is None:
             raise Exception("Can not decrypt message, the encrypter has not been initialized yet!")
 
@@ -92,7 +107,19 @@ class SecureVpnCrypter(object):
             trimmed_message = cipher_text[len(SecureVpnCrypter.encryptionTag):]
             decrypted_message = self.crypter.decrypt(trimmed_message)[16:]
 
-        return decrypted_message
+        self.integrity_hasher_decrypt = SHA256.new(str(decrypted_message))
+        message_hash = self.integrity_hasher_decrypt.digest()
+
+        print "Message: " + decrypted_message
+        print "Hash: " + message_hash
+
+
+        if integrity_hash is not None:
+            if str(message_hash) != str(integrity_hash):
+                return False, decrypted_message
+
+
+        return True, decrypted_message
 
 
 class SecureSvnBase(asynchat.async_chat):
@@ -107,6 +134,7 @@ class SecureSvnBase(asynchat.async_chat):
         self.progress_lock = mutex.mutex()
         self.in_step_through_mode = False
         self.shared_secret = ""
+        self.integrity_hash = None
 
         self.logger = None
         self.debugger = None
@@ -142,24 +170,38 @@ class SecureSvnBase(asynchat.async_chat):
         self.wait_and_begin_progress()
         challengeMessage, responseMessage = MessageManager.create_challenge_response_message(self.negotiator, self.shared_secret)
         self.send(self.append_message_delimiters(challengeMessage))
-        self.send(self.append_message_delimiters(self.crypter.encrypt(responseMessage)))
+        integrity_hash, encrypted_message = self.crypter.encrypt(responseMessage)
+        self.send_integrity_message(integrity_hash)
+        self.send(self.append_message_delimiters(encrypted_message))
+
+    def send_integrity_message(self, hash):
+        integrity_message = MessageManager.create_integrity_message(hash)
+        self.send(self.append_message_delimiters(integrity_message))
 
     def send_challenge_negotiation(self):
         self.wait_and_begin_progress()
-        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_challenge_negotiation_message(self.negotiator, self.shared_secret))))
+        integrity_hash, encrypted_message = self.crypter.encrypt(MessageManager.create_challenge_negotiation_message(self.negotiator, self.shared_secret))
+        self.send_integrity_message(integrity_hash)
+        self.send(self.append_message_delimiters(encrypted_message))
 
     def confirm_negotiation(self):
         self.wait_and_begin_progress()
-        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_negotiation_confirmation_message())))
+        integrity_hash, encrypted_message = self.crypter.encrypt(MessageManager.create_negotiation_confirmation_message())
+        self.send_integrity_message(integrity_hash)
+        self.send(self.append_message_delimiters(encrypted_message))
 
     def initialize_negotiation(self):
         self.wait_and_begin_progress()
-        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_negotiation_initialization_message())))
+        integrity_hash, encrypted_message = self.crypter.encrypt(MessageManager.create_negotiation_initialization_message())
+        self.send_integrity_message(integrity_hash)
+        self.send(self.append_message_delimiters(encrypted_message))
 
     def send_message(self, message):
         self.wait_and_begin_progress()
         self.wait_for_negotiation()
-        self.send(self.append_message_delimiters(self.crypter.encrypt(MessageManager.create_message(message))))
+        integrity_hash, encrypted_message = self.crypter.encrypt(MessageManager.create_message(message))
+        self.send_integrity_message(integrity_hash)
+        self.send(self.append_message_delimiters(encrypted_message))
 
     def set_shared_secret(self, shared_secret):
         self.shared_secret = shared_secret
@@ -184,6 +226,9 @@ class SecureSvnBase(asynchat.async_chat):
     def toggle_step_through_mode(self):
         self.in_step_through_mode = not self.in_step_through_mode
 
+    def set_integrity_hash(self, hash):
+        self.integrity_hash = hash
+
 class SecureSvnClient(SecureSvnBase):
 
     def __init__(self, crypter, negotiator, host, port):
@@ -197,38 +242,49 @@ class SecureSvnClient(SecureSvnBase):
 
         encrypted_text = self.received_data
         self.debug(encrypted_text)
-        decrypted_text = self.crypter.decrypt(encrypted_text)
 
-        messages = MessageManager.parse_message(decrypted_text)
+        integrity_check, decrypted_text = self.crypter.decrypt(encrypted_text, self.integrity_hash)
+        self.integrity_hash = None
 
-        for message in messages:
-            message_type, content = message
+        print integrity_check
 
-            if message_type == MessageManager.DATA_MESSAGE:
-                self.log("The received plain text is: " + content)
-                print "The received plain text is: " + content
+        if integrity_check:
+            messages = MessageManager.parse_message(decrypted_text)
 
-            elif message_type == MessageManager.CHALLENGE:
-                self.negotiator.record_challenge(content)
+            for message in messages:
+                message_type, content = message
 
-            elif message_type == MessageManager.NEGOTIATION_CHALLENGE:
-                print "Negotiation is: " + str(content)
-                self.log("Negotiation is: " + str(content))
-                if self.negotiator.validate_response(content, self.shared_secret):
-                    self.send_challenge_negotiation()
-                    self.set_shared_secret(self.negotiator.get_session_key(content))
-                else:
-                    self.log("INVALID - DISCONNECTING")
-                    print "INVALID - DISCONNECTING"
-                    self.socket.close()
+                if message_type == MessageManager.DATA_MESSAGE:
+                    self.log("The received plain text is: " + content)
+                    print "The received plain text is: " + content
 
-            elif message_type == MessageManager.NEGOTIATION_CONFIRMATION_MESSAGE:
-                self.handle_negotiation_confirmation()
+                elif message_type == MessageManager.CHALLENGE:
+                    self.negotiator.record_challenge(content)
 
-            elif message_type == MessageManager.NEGOTIATION_INITIALIZATION_MESSAGE:
-                while not self.negotiation_lock.testandset():
-                    None
-                self.send_challenge()
+                elif message_type == MessageManager.INTEGRITY_HASH:
+                    self.set_integrity_hash(content)
+
+                elif message_type == MessageManager.NEGOTIATION_CHALLENGE:
+                    print "Negotiation is: " + str(content)
+                    self.log("Negotiation is: " + str(content))
+                    if self.negotiator.validate_response(content, self.shared_secret):
+                        self.send_challenge_negotiation()
+                        self.set_shared_secret(self.negotiator.get_session_key(content))
+                    else:
+                        self.log("INVALID - DISCONNECTING")
+                        print "INVALID - DISCONNECTING"
+                        self.socket.close()
+
+                elif message_type == MessageManager.NEGOTIATION_CONFIRMATION_MESSAGE:
+                    self.handle_negotiation_confirmation()
+
+                elif message_type == MessageManager.NEGOTIATION_INITIALIZATION_MESSAGE:
+                    while not self.negotiation_lock.testandset():
+                        None
+                    self.send_challenge()
+        else:
+            self.log("Integrity check failed...")
+            print "Integrity check failed..."
 
         self.received_data = ''
 
@@ -238,7 +294,7 @@ class SecureSvnClient(SecureSvnBase):
 
 class SecureSvnServerHandler(SecureSvnBase):
 
-    renegotiation_time = 20
+    renegotiation_time = 10
 
     def __init__(self, crypter, negotiator, sock, shared_secret):
         SecureSvnBase.__init__(self, crypter, negotiator)
@@ -251,34 +307,39 @@ class SecureSvnServerHandler(SecureSvnBase):
         encrypted_text = self.received_data
         self.debug(encrypted_text)
 
-        decrypted_text = self.crypter.decrypt(encrypted_text)
+        integrity_check, decrypted_text = self.crypter.decrypt(encrypted_text, self.integrity_hash)
+        self.integrity_hash = None
 
-        messages = MessageManager.parse_message(decrypted_text)
+        if integrity_check:
+            messages = MessageManager.parse_message(decrypted_text)
 
-        for message in messages:
-            message_type, content = message
+            for message in messages:
+                message_type, content = message
 
-            if message_type == MessageManager.DATA_MESSAGE:
-                self.log("The received plain text is: " + content)
-                print "The received plain text is: " + content
+                if message_type == MessageManager.DATA_MESSAGE:
+                    self.log("The received plain text is: " + content)
+                    print "The received plain text is: " + content
 
-            elif message_type == MessageManager.CHALLENGE:
-                self.log("Challenge is: " + str(content))
-                print "Challenge is: " + str(content)
-                self.negotiator.record_challenge(content)
-                self.send_challenge_response()
+                elif message_type == MessageManager.CHALLENGE:
+                    self.log("Challenge is: " + str(content))
+                    print "Challenge is: " + str(content)
+                    self.negotiator.record_challenge(content)
+                    self.send_challenge_response()
 
-            elif message_type == MessageManager.NEGOTIATION_MESSAGE:
-                self.log("Negotiation is: " + str(content))
-                print "Negotiation is: " + str(content)
-                if self.negotiator.validate_response(content, self.shared_secret):
-                    self.set_shared_secret(self.negotiator.get_session_key(content))
-                    self.confirm_negotiation()
-                    self.negotiation_lock.unlock()
-                else:
-                    self.log("INVALID - DISCONNECTING")
-                    print "INVALID - DISCONNECTING"
-                    self.socket.close()
+                elif message_type == MessageManager.NEGOTIATION_MESSAGE:
+                    self.log("Negotiation is: " + str(content))
+                    print "Negotiation is: " + str(content)
+                    if self.negotiator.validate_response(content, self.shared_secret):
+                        self.set_shared_secret(self.negotiator.get_session_key(content))
+                        self.confirm_negotiation()
+                        self.negotiation_lock.unlock()
+                    else:
+                        self.log("INVALID - DISCONNECTING")
+                        print "INVALID - DISCONNECTING"
+                        self.socket.close()
+        else:
+            self.log("Integrity check failed...")
+            print "Integrity check failed..."
 
         self.received_data = ''
 

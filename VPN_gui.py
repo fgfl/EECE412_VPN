@@ -8,6 +8,7 @@ __author__ = 'Frederick'
 # October 10, 2014
 
 import Tkinter
+import tkMessageBox
 
 y_bottom_padding = (0, 10)
 x_right_padding = (0, 5)
@@ -16,7 +17,8 @@ enableDebugString = "Enable debug"
 wrapTextLength = 250
 minButtonSize = 70
 
-
+#flags
+clientDetected = False
 
 class VPNWindow(Tkinter.Tk):
     # Constructor
@@ -160,12 +162,19 @@ class startPage(Tkinter.Frame):
         self.setKeyEntryFocus()
 
     def onConnectClick(self, controller):
-        if self.keyEntry.get() == "":
+        if self.keyEntry.get() is "":
+            tkMessageBox.showwarning("Missing inputs",
+                                     "Shared key is missing")
             return
+        # Delete key
+        self.keyEntry.delete(0, Tkinter.END)
         if self.svrCheckBoxState.get():
             controller.show_frame(svrConfigPage)
         elif self.clientCheckBoxState.get():
             controller.show_frame(clientConfigPage)
+        else:
+            tkMessageBox.showwarning("Missing inputs",
+                                     "Operation mode not selected")
 
     def setKeyEntryFocus(self):
         self.keyEntry.focus_set()
@@ -178,6 +187,8 @@ class svrConfigPage(Tkinter.Frame):
         self.initializeSvrConfigPage(controller)
 
     def initializeSvrConfigPage(self, controller):
+        self.svrPortNumber = Tkinter.StringVar()
+
         self.grid(sticky="NSEW")
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
@@ -220,7 +231,7 @@ class svrConfigPage(Tkinter.Frame):
         portLine.grid_columnconfigure(1, weight=1)
         portPrompt = Tkinter.Label(portLine, text="Port:")
         portPrompt.grid(column=0, row=0, padx=x_right_padding, sticky="W")
-        portBox = Tkinter.Entry(portLine)
+        portBox = Tkinter.Entry(portLine, textvariable=self.svrPortNumber)
         portBox.grid(column=1, row=0, sticky="EW")
         # Connect/Cancel button line
         connectButtonLine = Tkinter.Frame(appFrame)
@@ -236,7 +247,11 @@ class svrConfigPage(Tkinter.Frame):
         cancelButton.grid(column=1, row=0)
 
     def onConnectClick(self, controller):
-        controller.show_frame(svrWaitPage)
+        if self.svrPortNumber is "":
+            tkMessageBox.showwarning("Missing inputs",
+                                     "Server port number not found")
+        else:
+            controller.show_frame(svrWaitPage)
 
     def onCancelClick(self, controller):
         controller.show_frame(startPage)
@@ -247,6 +262,7 @@ class svrWaitPage(Tkinter.Frame):
         Tkinter.Frame.__init__(self, parent)
         self.parent = parent
         self.initializeSvrWaitPage(controller)
+        self.checkForClient(controller)
 
     def initializeSvrWaitPage(self, controller):
         self.grid(sticky="NSEW")
@@ -304,6 +320,11 @@ class svrWaitPage(Tkinter.Frame):
     def onCancelClick(self, controller):
         controller.show_frame(startPage)
 
+    def checkForClient(self, controller):
+        if clientDetected == True:
+            controller.show_frame(messagingPage)
+        else:
+            self.after(0,self.checkForClient)
 
 class clientConfigPage(Tkinter.Frame):
     def __init__(self, parent, controller):

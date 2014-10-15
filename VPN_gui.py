@@ -188,8 +188,10 @@ class startPage(Tkinter.Frame):
         # Delete key
         self.keyEntry.delete(0, Tkinter.END)
         if self.svrCheckBoxState.get():
+            controller.title("Assignment 3 VPN - SERVER")
             controller.show_frame(svnConfigPage)
         elif self.clientCheckBoxState.get():
+            controller.title("Assignment 3 VPN - CLIENT")
             controller.show_frame(clientConfigPage)
         else:
             tkMessageBox.showwarning("Missing inputs",

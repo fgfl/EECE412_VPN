@@ -358,6 +358,10 @@ class SecureSvnServer(asyncore.dispatcher):
         self.shared_secret = ""
         self.logger = None
         self.debugger = None
+        self.client_connected = False
+
+    def is_client_connected(self):
+        return self.client_connected
 
     def handle_accept(self):
         pair = self.accept()
@@ -367,6 +371,7 @@ class SecureSvnServer(asyncore.dispatcher):
             self.handler = SecureSvnServerHandler(self.crypter, self.negotiator, sock, self.shared_secret)
             self.handler.set_logger(self.logger)
             self.handler.set_debugger(self.debugger)
+            self.client_connected = True
 
     def send_message(self, message):
         if self.handler is not None:

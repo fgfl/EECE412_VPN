@@ -12,6 +12,7 @@ import tkMessageBox
 from SecureVpn import *
 import threading
 from SessionKeyNegotiator import *
+import datetime
 
 y_bottom_padding = (0, 10)
 x_right_padding = (0, 5)
@@ -19,9 +20,6 @@ debugBoxWidth = 500
 enableDebugString = "Enable debug"
 wrapTextLength = 250
 minButtonSize = 70
-
-#flags
-clientDetected = False
 
 class VPNWindow(Tkinter.Tk):
     # Constructor
@@ -267,7 +265,7 @@ class svnConfigPage(Tkinter.Frame):
         cancelButton.grid(column=1, row=0)
 
     def onConnectClick(self, controller):
-        if self.svrPortNumber is "":
+        if self.svrPortNumber.get() is "":
             tkMessageBox.showwarning("Missing inputs",
                                      "Server port number not found")
         else:
@@ -280,8 +278,8 @@ class svnConfigPage(Tkinter.Frame):
             loop_thread = threading.Thread(target= asyncore.loop, name="Asyncore Loop")
             loop_thread.start()
             controller.frames[messagingPage].init_loggers(controller)
-            #controller.show_frame(svnWaitPage)
-            controller.show_frame(messagingPage)
+            controller.frames[svnWaitPage].checkForClient(controller)
+            controller.show_frame(svnWaitPage)
 
     def onCancelClick(self, controller):
         controller.show_frame(startPage)
@@ -292,7 +290,6 @@ class svnWaitPage(Tkinter.Frame):
         Tkinter.Frame.__init__(self, parent)
         self.parent = parent
         self.initializeSvrWaitPage(controller)
-        self.checkForClient(controller)
 
     def initializeSvrWaitPage(self, controller):
         self.grid(sticky="NSEW")
@@ -350,10 +347,10 @@ class svnWaitPage(Tkinter.Frame):
         controller.show_frame(startPage)
 
     def checkForClient(self, controller):
-        if clientDetected == True:
+        if controller.vpn_client.is_client_connected():
             controller.show_frame(messagingPage)
         else:
-            self.after(0,self.checkForClient)
+            self.after(0, lambda: self.checkForClient(controller))
 
 class clientConfigPage(Tkinter.Frame):
     def __init__(self, parent, controller):
@@ -455,33 +452,37 @@ class messagingPage(Tkinter.Frame):
         self.initializeMessagingPage(controller)
 
     def initializeMessagingPage(self, controller):
-        self.passedMessages = Tkinter.StringVar()
 
-        # Debug side panel
-        self.debugString = Tkinter.StringVar()
         debugFrame = Tkinter.Frame(self, bg="black")
         debugFrame.grid(column=1, row=0, sticky="NSEW")
         debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
         debugFrame.grid_rowconfigure(0, weight=1)
-        debugMessageBox = Tkinter.Message(debugFrame,
-                                          textvariable=self.debugString,
-                                          anchor="w",
-                                          bg="black",
-                                          fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NW")
-        debugMessageBox.grid_propagate(0)
-        debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
+
+        #scrollbar_debug = Tkinter.Scrollbar(debugFrame)
+        #scrollbar_debug.grid(column=0, row=0, sticky="E")
+        self.debugMessageBox = Tkinter.Text(debugFrame, wrap=Tkinter.WORD,
+                                           bg="black",
+                                           fg="white",
+                                           #yscrollcommand=scrollbar_debug.set,
+                                           state=Tkinter.DISABLED)
+
+        self.debugMessageBox.grid(column=0, row=0, sticky="NW")
+        self.debugMessageBox.grid_propagate(0)
+        self.debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
+
+        #scrollbar_debug.config(command=self.debugMessageBox.yview)
+
         # Debug enable line
         debugLine = Tkinter.Frame(debugFrame)
         debugLine.grid(column=0, row=1, sticky="SW")
         debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString, command= lambda: self.toggle_debug(controller))
         debugCheckBox.grid()
         # Step button
-        stepButtonFrame = Tkinter.Frame(debugFrame)
-        stepButtonFrame.grid(column=1, row=1, sticky="SE")
+        stepButtonFrame = Tkinter.Frame(debugLine)
+        stepButtonFrame.grid(column=1, row=1, sticky="EW")
         stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
         stepButton = Tkinter.Button(stepButtonFrame, text="Step", command=lambda: self.step_debug(controller))
-        stepButton.grid(sticky="EW")
+        stepButton.grid(sticky="E")
 
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
@@ -496,13 +497,18 @@ class messagingPage(Tkinter.Frame):
                                                minsize=debugBoxWidth)
         conversationFrame.grid_rowconfigure(0, weight=1,
                                             minsize=debugBoxWidth)
-        self.conversationHist = Tkinter.Message(conversationFrame,
-                                           textvariable=self.passedMessages,
-                                           anchor="w",
+
+        #scrollbar_message = Tkinter.Scrollbar(conversationFrame)
+        #scrollbar_message.grid(column=0, row=0, sticky="E")
+        self.conversationHist = Tkinter.Text(conversationFrame, wrap=Tkinter.WORD,
                                            bg="white",
-                                           fg="black")
+                                           fg="black",
+                                           #yscrollcommand=scrollbar_message.set,
+                                           state=Tkinter.DISABLED)
         self.conversationHist.grid(column=0, row=0, padx=x_right_padding,
                               sticky="NEWS")
+        #scrollbar_message.config(command=self.conversationHist.yview)
+
         disconnectButton = \
             Tkinter.Button(conversationFrame,
                            text="Disconnect",
@@ -527,12 +533,16 @@ class messagingPage(Tkinter.Frame):
         self.enterMessageBox.delete(0, len(self.enterMessageBox.get()))
 
     def log(self, message):
-        #newMessage = self.passedMessages.get() + "\n" + message
-        self.passedMessages.set(message)
+        self.conversationHist.config(state=Tkinter.NORMAL)
+        self.conversationHist.insert("@0,0", message + "\n\n")
+        self.conversationHist.insert("@0,0", "Received: " + str(datetime.datetime.now()) + "\n")
+        self.conversationHist.config(state=Tkinter.DISABLED)
 
     def debug(self, message):
-        #newMessage = self.debugString.get() + "\n" + message
-        self.debugString.set(message)
+        self.debugMessageBox.config(state=Tkinter.NORMAL)
+        self.debugMessageBox.insert("@0,0", message + "\n\n")
+        self.debugMessageBox.insert("@0,0", "Received: " + str(datetime.datetime.now()) + "\n")
+        self.debugMessageBox.config(state=Tkinter.DISABLED)
 
     def init_loggers(self, controller):
         controller.vpn_client.set_logger(lambda message: self.log(message))

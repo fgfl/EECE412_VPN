@@ -92,7 +92,6 @@ class startPage(Tkinter.Frame):
 
         # Debug side panel
         self.debugString = Tkinter.StringVar()
-        self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
         debugFrame.grid(column=1, row=0, sticky="NSEW")
         debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
@@ -206,7 +205,6 @@ class svnConfigPage(Tkinter.Frame):
 
         # Debug side panel
         self.debugString = Tkinter.StringVar()
-        self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
         debugFrame.grid(column=1, row=0, sticky="NSEW")
         debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
@@ -260,7 +258,7 @@ class svnConfigPage(Tkinter.Frame):
     def onConnectClick(self, controller):
         encrypter = SecureVpnCrypter()
         negotiator = SessionKeyNegotiator("SERVER")
-        server = SecureSvnServer('localhost', int(self.portBox.get()), encrypter, negotiator)
+        server = SecureSvnServer('', int(self.portBox.get()), encrypter, negotiator)
         server.set_shared_secret(controller.get_key())
         controller.set_key("")
         controller.set_vpn(server)
@@ -287,7 +285,6 @@ class svnWaitPage(Tkinter.Frame):
 
         # Debug side panel
         self.debugString = Tkinter.StringVar()
-        self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
         debugFrame.grid(column=1, row=0, sticky="NSEW")
         debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
@@ -350,7 +347,6 @@ class clientConfigPage(Tkinter.Frame):
 
         ## Debug side panel
         self.debugString = Tkinter.StringVar()
-        self.debugString.set("test")
         debugFrame = Tkinter.Frame(self, bg="black")
         debugFrame.grid(column=1, row=0, sticky="NSEW")
         debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
@@ -457,13 +453,13 @@ class messagingPage(Tkinter.Frame):
         # Debug enable line
         debugLine = Tkinter.Frame(debugFrame)
         debugLine.grid(column=0, row=1, sticky="SW")
-        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
+        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString, command= lambda: self.toggle_debug(controller))
         debugCheckBox.grid()
         # Step button
         stepButtonFrame = Tkinter.Frame(debugFrame)
         stepButtonFrame.grid(column=1, row=1, sticky="SE")
         stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
-        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
+        stepButton = Tkinter.Button(stepButtonFrame, text="Step", command=lambda: self.step_debug(controller))
         stepButton.grid(sticky="EW")
 
         # Frame to hold Non debug stuff
@@ -506,7 +502,7 @@ class messagingPage(Tkinter.Frame):
         controller.show_frame(startPage)
 
     def onSendClick(self, controller):
-        controller.send_vpn_message(self.enterMessageBox.get())
+        threading.Thread(target= lambda: controller.send_vpn_message(self.enterMessageBox.get()), name="UI Loop").start()
         self.enterMessageBox.delete(0, len(self.enterMessageBox.get()))
 
     def log(self, message):
@@ -520,6 +516,12 @@ class messagingPage(Tkinter.Frame):
     def init_loggers(self, controller):
         controller.vpn_client.set_logger(lambda message: self.log(message))
         controller.vpn_client.set_debugger(lambda message: self.debug(message))
+
+    def toggle_debug(self, controller):
+        controller.vpn_client.toggle_step_through_mode()
+
+    def step_debug(self, controller):
+        controller.vpn_client.continue_progress()
 
 if __name__ == "__main__":
     app = VPNWindow(None)

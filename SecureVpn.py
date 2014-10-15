@@ -65,8 +65,6 @@ class MessageManager(object):
 
 class SecureVpnCrypter(object):
 
-    encryptionTag = "EEEEEEEE"
-
     def __init__(self):
         self.crypter = None
         self.iv = Random.new().read(AES.block_size)
@@ -92,27 +90,16 @@ class SecureVpnCrypter(object):
         self.integrity_hasher_encrypt = SHA256.new(str(message))
         integrity_hash = self.integrity_hasher_encrypt.digest()
 
-        print "Message: " + message
-        print "Hash: " + integrity_hash
-
-        return integrity_hash, SecureVpnCrypter.encryptionTag + self.iv + encrypted_message
+        return integrity_hash, self.iv + encrypted_message
 
     def decrypt(self, cipher_text, integrity_hash):
         if self.crypter is None:
             raise Exception("Can not decrypt message, the encrypter has not been initialized yet!")
 
-        decrypted_message = cipher_text
-
-        if str(cipher_text[0:len(SecureVpnCrypter.encryptionTag)]) == SecureVpnCrypter.encryptionTag:
-            trimmed_message = cipher_text[len(SecureVpnCrypter.encryptionTag):]
-            decrypted_message = self.crypter.decrypt(trimmed_message)[16:]
+        decrypted_message = self.crypter.decrypt(cipher_text)[16:]
 
         self.integrity_hasher_decrypt = SHA256.new(str(decrypted_message))
         message_hash = self.integrity_hasher_decrypt.digest()
-
-        print "Message: " + decrypted_message
-        print "Hash: " + message_hash
-
 
         if integrity_hash is not None:
             if str(message_hash) != str(integrity_hash):
@@ -164,12 +151,18 @@ class SecureSvnBase(asynchat.async_chat):
 
     def send_challenge(self):
         self.wait_and_begin_progress()
-        self.send(self.append_message_delimiters(MessageManager.create_challenge_message(self.negotiator)))
+        integrity_hash, encrypted_message = self.crypter.encrypt(MessageManager.create_challenge_message(self.negotiator))
+        self.send_integrity_message(integrity_hash)
+        self.send(self.append_message_delimiters(encrypted_message))
 
     def send_challenge_response(self):
         self.wait_and_begin_progress()
+
         challengeMessage, responseMessage = MessageManager.create_challenge_response_message(self.negotiator, self.shared_secret)
-        self.send(self.append_message_delimiters(challengeMessage))
+        integrity_hash, encrypted_message = self.crypter.encrypt(challengeMessage)
+        self.send_integrity_message(integrity_hash)
+        self.send(self.append_message_delimiters(encrypted_message))
+
         integrity_hash, encrypted_message = self.crypter.encrypt(responseMessage)
         self.send_integrity_message(integrity_hash)
         self.send(self.append_message_delimiters(encrypted_message))
@@ -245,8 +238,6 @@ class SecureSvnClient(SecureSvnBase):
 
         integrity_check, decrypted_text = self.crypter.decrypt(encrypted_text, self.integrity_hash)
         self.integrity_hash = None
-
-        print integrity_check
 
         if integrity_check:
             messages = MessageManager.parse_message(decrypted_text)
@@ -393,3 +384,6 @@ class SecureSvnServer(asyncore.dispatcher):
 
     def set_debugger(self, debugger):
         self.debugger = debugger
+
+    def toggle_step_through_mode(self):
+        self.handler.toggle_step_through_mode()

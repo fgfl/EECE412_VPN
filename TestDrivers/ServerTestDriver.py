@@ -6,7 +6,7 @@ from SecureVpnCrypter import *
 encrypter = SecureVpnCrypter()
 negotiator = SessionKeyNegotiator("SERVER")
 
-server = SecureSvnServer('', 12345, encrypter, negotiator)
+server = SecureVpnServer('', 12345, encrypter, negotiator)
 server.set_shared_secret("asdfasdfasdfasdfasdfasdf")
 
 loop_thread = threading.Thread(target=asyncore.loop, name="Asyncore Loop")

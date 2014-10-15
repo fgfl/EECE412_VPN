@@ -61,7 +61,7 @@ class MessageManager(object):
         return MessageManager.NEGOTIATION_MESSAGE + MessageManager.MESSAGE_DELIMITER + negotiator.get_challenge_negotiation(shared_secret) + MessageManager.MESSAGE_DELIMITER
 
 
-class SecureSvnBase(asynchat.async_chat):
+class SecureVpnBase(asynchat.async_chat):
 
     def __init__(self, crypter, negotiator):
         asynchat.async_chat.__init__(self)
@@ -191,10 +191,10 @@ class SecureSvnBase(asynchat.async_chat):
     def set_integrity_hash(self, hash):
         self.integrity_hash = hash
 
-class SecureSvnClient(SecureSvnBase):
+class SecureVpnClient(SecureVpnBase):
 
     def __init__(self, crypter, negotiator, host, port):
-        SecureSvnBase.__init__(self, crypter, negotiator)
+        SecureVpnBase.__init__(self, crypter, negotiator)
         self.host = host
         self.port = port
         self.create_socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -256,12 +256,12 @@ class SecureSvnClient(SecureSvnBase):
         self.negotiation_lock.unlock()
 
 
-class SecureSvnServerHandler(SecureSvnBase):
+class SecureVpnServerHandler(SecureVpnBase):
 
     renegotiation_time = 10
 
     def __init__(self, crypter, negotiator, sock, shared_secret):
-        SecureSvnBase.__init__(self, crypter, negotiator)
+        SecureVpnBase.__init__(self, crypter, negotiator)
         self.set_socket(sock)
         self.shared_secret = shared_secret
         self.initiate_key_negotiation()
@@ -315,10 +315,10 @@ class SecureSvnServerHandler(SecureSvnBase):
         print "Initializing negotiation..."
         self.initialize_negotiation()
         self.wait_and_begin_negotiation()
-        threading.Timer(SecureSvnServerHandler.renegotiation_time, self.initiate_key_negotiation).start()
+        threading.Timer(SecureVpnServerHandler.renegotiation_time, self.initiate_key_negotiation).start()
 
 
-class SecureSvnServer(asyncore.dispatcher):
+class SecureVpnServer(asyncore.dispatcher):
 
     def __init__(self, host, port, crypter, negotiator):
         asyncore.dispatcher.__init__(self)
@@ -345,7 +345,7 @@ class SecureSvnServer(asyncore.dispatcher):
         if pair is not None:
             sock, address = pair
             print 'Incoming connection from %s' % repr(address)
-            self.handler = SecureSvnServerHandler(self.crypter, self.negotiator, sock, self.shared_secret)
+            self.handler = SecureVpnServerHandler(self.crypter, self.negotiator, sock, self.shared_secret)
             self.handler.set_logger(self.logger)
             self.handler.set_debugger(self.debugger)
             self.handler.set_debugger_raw(self.debugger_raw)

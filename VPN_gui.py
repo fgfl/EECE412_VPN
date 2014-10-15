@@ -274,7 +274,7 @@ class svnConfigPage(Tkinter.Frame):
         else:
             encrypter = SecureVpnCrypter()
             negotiator = SessionKeyNegotiator("SERVER")
-            server = SecureSvnServer('', int(self.portBox.get()), encrypter, negotiator)
+            server = SecureVpnServer('', int(self.portBox.get()), encrypter, negotiator)
             server.set_shared_secret(controller.get_key())
             controller.set_key("")
             controller.set_vpn(server)
@@ -436,7 +436,7 @@ class clientConfigPage(Tkinter.Frame):
     def onConnectClick(self, controller):
         encrypter = SecureVpnCrypter()
         negotiator = SessionKeyNegotiator("CLIENT")
-        client = SecureSvnClient(encrypter, negotiator, self.ipEntryBox.get(), int(self.portEntryBox.get()))
+        client = SecureVpnClient(encrypter, negotiator, self.ipEntryBox.get(), int(self.portEntryBox.get()))
         client.set_shared_secret(controller.get_key())
         controller.set_key("")
         controller.set_vpn(client)

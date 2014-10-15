@@ -13,6 +13,7 @@ from SecureVpn import *
 import threading
 from SessionKeyNegotiator import *
 import datetime
+from SecureVpnCrypter import *
 
 y_bottom_padding = (0, 10)
 x_right_padding = (0, 5)

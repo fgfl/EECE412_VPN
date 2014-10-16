@@ -9,6 +9,7 @@ __author__ = 'Frederick'
 
 import Tkinter
 import tkMessageBox
+import tkFont
 from SecureVpn import *
 import threading
 from SessionKeyNegotiator import *
@@ -17,7 +18,8 @@ from SecureVpnCrypter import *
 
 y_bottom_padding = (0, 10)
 x_right_padding = (0, 5)
-debugBoxWidth = 500
+debugBoxWidth = 80 # characters
+debugBoxHeight = 15 # characters i.e. lines of text
 enableDebugString = "Enable debug"
 wrapTextLength = 250
 minButtonSize = 70
@@ -91,32 +93,6 @@ class startPage(Tkinter.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Debug side panel
-        self.debugString = Tkinter.StringVar()
-        debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
-        debugFrame.grid_rowconfigure(0, weight=1)
-        debugMessageBox = Tkinter.Message(debugFrame,
-                                          textvariable=self.debugString,
-                                          anchor="w",
-                                          bg="black",
-                                          fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NW")
-        debugMessageBox.grid_propagate(0)
-        debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
-        # Debug enable line
-        debugLine = Tkinter.Frame(debugFrame)
-        debugLine.grid(column=0, row=1, sticky="SW")
-        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
-        debugCheckBox.grid()
-        # Step button
-        stepButtonFrame = Tkinter.Frame(debugFrame)
-        stepButtonFrame.grid(column=1, row=1, sticky="SE")
-        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
-        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
-        stepButton.grid(sticky="EW")
-
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
         appFrame.grid(column=0, row=0, padx=x_right_padding, sticky="EW")
@@ -161,6 +137,7 @@ class startPage(Tkinter.Frame):
         self.keyEntry = Tkinter.Entry(enterKeyLine, textvariable=self.ipAddress)
         self.keyEntry.config(show="*")
         self.keyEntry.grid(column=1, row=0, sticky="EW")
+        self.keyEntry.bind("<Return>", lambda _: self.onConnectClick(controller))
         # Line for connect button
         connectLine = Tkinter.Frame(appFrame)
         connectLine.grid(column=0, row=4, sticky="E")
@@ -215,32 +192,6 @@ class svnConfigPage(Tkinter.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Debug side panel
-        self.debugString = Tkinter.StringVar()
-        debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
-        debugFrame.grid_rowconfigure(0, weight=1)
-        debugMessageBox = Tkinter.Message(debugFrame,
-                                          textvariable=self.debugString,
-                                          anchor="w",
-                                          bg="black",
-                                          fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NW")
-        debugMessageBox.grid_propagate(0)
-        debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
-        # Debug enable line
-        debugLine = Tkinter.Frame(debugFrame)
-        debugLine.grid(column=0, row=1, sticky="SW")
-        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
-        debugCheckBox.grid()
-        # Step button
-        stepButtonFrame = Tkinter.Frame(debugFrame)
-        stepButtonFrame.grid(column=1, row=1, sticky="SE")
-        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
-        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
-        stepButton.grid(sticky="EW")
-
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
         appFrame.grid(column=0, row=0, padx=x_right_padding, sticky="EW")
@@ -254,6 +205,7 @@ class svnConfigPage(Tkinter.Frame):
         portPrompt.grid(column=0, row=0, padx=x_right_padding, sticky="W")
         self.portBox = Tkinter.Entry(portLine, textvariable=self.svrPortNumber)
         self.portBox.grid(column=1, row=0, sticky="EW")
+        self.portBox.bind("<Return>",lambda _: self.onConnectClick(controller))
         # Connect/Cancel button line
         connectButtonLine = Tkinter.Frame(appFrame)
         connectButtonLine.grid(column=0, row=2, sticky="EW")
@@ -266,6 +218,9 @@ class svnConfigPage(Tkinter.Frame):
             Tkinter.Button(connectButtonLine, text="Cancel",
                            command=lambda: self.onCancelClick(controller))
         cancelButton.grid(column=1, row=0)
+
+        # Focus set on port
+        #self.setPortEntryFocus()
 
     def onConnectClick(self, controller):
         if self.svrPortNumber.get() is "":
@@ -287,6 +242,10 @@ class svnConfigPage(Tkinter.Frame):
     def onCancelClick(self, controller):
         controller.show_frame(startPage)
 
+    #def setPortEntryFocus(self):
+    #    self.portBox.focus_set()
+    #    self.portBox.selection_range(0, Tkinter.END)
+
 
 class svnWaitPage(Tkinter.Frame):
     def __init__(self, parent, controller):
@@ -298,32 +257,6 @@ class svnWaitPage(Tkinter.Frame):
         self.grid(sticky="NSEW")
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
-
-        # Debug side panel
-        self.debugString = Tkinter.StringVar()
-        debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
-        debugFrame.grid_rowconfigure(0, weight=1)
-        debugMessageBox = Tkinter.Message(debugFrame,
-                                          textvariable=self.debugString,
-                                          anchor="w",
-                                          bg="black",
-                                          fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NW")
-        debugMessageBox.grid_propagate(0)
-        debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
-        # Debug enable line
-        debugLine = Tkinter.Frame(debugFrame)
-        debugLine.grid(column=0, row=1, sticky="SW")
-        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
-        debugCheckBox.grid()
-        # Step button
-        stepButtonFrame = Tkinter.Frame(debugFrame)
-        stepButtonFrame.grid(column=1, row=1, sticky="SE")
-        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
-        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
-        stepButton.grid(sticky="EW")
 
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
@@ -366,32 +299,6 @@ class clientConfigPage(Tkinter.Frame):
         self.grid_rowconfigure(0, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        ## Debug side panel
-        self.debugString = Tkinter.StringVar()
-        debugFrame = Tkinter.Frame(self, bg="black")
-        debugFrame.grid(column=1, row=0, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
-        debugFrame.grid_rowconfigure(0, weight=1)
-        debugMessageBox = Tkinter.Message(debugFrame,
-                                          textvariable=self.debugString,
-                                          anchor="w",
-                                          bg="black",
-                                          fg="white")
-        debugMessageBox.grid(column=0, row=0, sticky="NW")
-        debugMessageBox.grid_propagate(0)
-        debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
-        # Debug enable line
-        debugLine = Tkinter.Frame(debugFrame)
-        debugLine.grid(column=0, row=1, sticky="SW")
-        debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString)
-        debugCheckBox.grid()
-        # Step button
-        stepButtonFrame = Tkinter.Frame(debugFrame)
-        stepButtonFrame.grid(column=1, row=1, sticky="SE")
-        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
-        stepButton = Tkinter.Button(stepButtonFrame, text="Step")
-        stepButton.grid(sticky="EW")
-
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
         appFrame.grid(column=0, row=0, padx=x_right_padding, sticky="EW")
@@ -415,10 +322,14 @@ class clientConfigPage(Tkinter.Frame):
         ipLabel.grid(column=0, row=0,  padx=x_right_padding, sticky="W")
         self.ipEntryBox = Tkinter.Entry(enterInfoFrame)
         self.ipEntryBox.grid(column=1, row=0, sticky="EW")
+        self.ipEntryBox.bind("<Return>",
+                             lambda _: self.onConnectClick(controller))
         portLabel = Tkinter.Label(enterInfoFrame, text="Port:")
         portLabel.grid(column=0, row=1, padx=x_right_padding, sticky="W")
         self.portEntryBox = Tkinter.Entry(enterInfoFrame)
         self.portEntryBox.grid(column=1, row=1, sticky="EW")
+        self.portEntryBox.bind("<Return>",
+                               lambda _: self.onConnectClick(controller))
         # Connect button and cancel button line
         buttonsFrame = Tkinter.Frame(appFrame)
         buttonsFrame.grid(column=0, row=3, sticky="EW")
@@ -433,20 +344,32 @@ class clientConfigPage(Tkinter.Frame):
                            command=lambda: self.onCancelClick(controller))
         cancelButton.grid(column=1, row=0)
 
+        #set focus to ip entry box
+    #    self.setIpEntryBoxFocus()
+
     def onConnectClick(self, controller):
-        encrypter = SecureVpnCrypter()
-        negotiator = SessionKeyNegotiator("CLIENT")
-        client = SecureVpnClient(encrypter, negotiator, self.ipEntryBox.get(), int(self.portEntryBox.get()))
-        client.set_shared_secret(controller.get_key())
-        controller.set_key("")
-        controller.set_vpn(client)
-        loop_thread = threading.Thread(target= asyncore.loop, name="Asyncore Loop")
-        loop_thread.start()
-        controller.frames[messagingPage].init_loggers(controller)
-        controller.show_frame(messagingPage)
+        if self.ipEntryBox.get() is "":
+            tkMessageBox.showwarning("Missing inputs", "Missing ip address")
+        elif self.portEntryBox.get() is "":
+            tkMessageBox.showwarning("Missing inputs", "Missing port number")
+        else:
+            encrypter = SecureVpnCrypter()
+            negotiator = SessionKeyNegotiator("CLIENT")
+            client = SecureVpnClient(encrypter, negotiator, self.ipEntryBox.get(), int(self.portEntryBox.get()))
+            client.set_shared_secret(controller.get_key())
+            controller.set_key("")
+            controller.set_vpn(client)
+            loop_thread = threading.Thread(target= asyncore.loop, name="Asyncore Loop")
+            loop_thread.start()
+            controller.frames[messagingPage].init_loggers(controller)
+            controller.show_frame(messagingPage)
 
     def onCancelClick(self, controller):
         controller.show_frame(startPage)
+
+ #   def setIpEntryBoxFocus(self):
+  #      self.ipEntryBox.focus_set()
+   #     self.ipEntryBox.selection_range(0, Tkinter.END)
 
 class messagingPage(Tkinter.Frame):
     def __init__(self, parent, controller):
@@ -455,37 +378,65 @@ class messagingPage(Tkinter.Frame):
         self.initializeMessagingPage(controller)
 
     def initializeMessagingPage(self, controller):
+        fontFamily = tkFont.Font(family='Times New Roman', size=10)
 
-        debugFrame = Tkinter.Frame(self, bg="black")
+        debugFrame = Tkinter.Frame(self)
         debugFrame.grid(column=1, row=0, sticky="NSEW")
-        debugFrame.grid_columnconfigure(0, minsize=debugBoxWidth, weight=1)
-        debugFrame.grid_rowconfigure(0, weight=1)
+        #debugFrame.grid_columnconfigure(0, weight=1)
+        #debugFrame.grid_rowconfigure(0, weight=1)
 
         #scrollbar_debug = Tkinter.Scrollbar(debugFrame)
         #scrollbar_debug.grid(column=0, row=0, sticky="E")
-        self.debugMessageBox = Tkinter.Text(debugFrame, wrap=Tkinter.WORD,
+        # Label for raw debug
+        rawDebugLabelFrame = Tkinter.Frame(debugFrame)
+        rawDebugLabelFrame.grid(column=0, row=0, sticky="EW")
+        rawDebugLabel = Tkinter.Label(rawDebugLabelFrame, text="Raw received data:")
+        rawDebugLabel.grid(column=0, row=0, sticky="W")
+        # Raw received data output box
+        debugRawBoxFrame = Tkinter.Frame(debugFrame)
+        debugRawBoxFrame.grid(column=0, row=1, sticky="EW")
+
+        self.debugRawMessageBox = Tkinter.Text(debugRawBoxFrame, wrap=Tkinter.WORD,
                                            bg="black",
                                            fg="white",
+                                           width=debugBoxWidth,
+                                           height=debugBoxHeight,
+                                           font=fontFamily,
                                            #yscrollcommand=scrollbar_debug.set,
-                                           state=Tkinter.DISABLED)
+                                          state=Tkinter.DISABLED)
+        self.debugRawMessageBox.grid(column=0, row=0, sticky="EW")
+        #self.debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
 
-        self.debugMessageBox.grid(column=0, row=0, sticky="NW")
-        self.debugMessageBox.grid_propagate(0)
-        self.debugMessageBox.grid_columnconfigure(0, minsize=debugBoxWidth)
-
+        #self.debugMessageBox.grid_propagate(0)
         #scrollbar_debug.config(command=self.debugMessageBox.yview)
+
+        # Debug log label
+        debugLogLabelFrame = Tkinter.Frame(debugFrame)
+        debugLogLabelFrame.grid(column=0, row=2, sticky="EW")
+        debugLogLabel = Tkinter.Label(debugLogLabelFrame, text="Debug Log:")
+        debugLogLabel.grid(column=0, row=0, sticky="W")
+        # Debug log Frame
+        debugLogFrame = Tkinter.Frame(debugFrame)
+        debugLogFrame.grid(column=0, row=3, sticky="EW")
+        self.debugLog = Tkinter.Text(debugLogFrame, wrap=Tkinter.WORD,
+                                bg="blue",
+                                fg="white",
+                                width=debugBoxWidth,
+                                height=debugBoxHeight,
+                                font=fontFamily,
+                                state=Tkinter.DISABLED)
+        self.debugLog.grid(column=0, row=0, sticky="EW")
 
         # Debug enable line
         debugLine = Tkinter.Frame(debugFrame)
-        debugLine.grid(column=0, row=1, sticky="SW")
+        debugLine.grid(column=0, row=4, sticky="NSEW")
+        debugLine.grid_columnconfigure(0, weight=1)
+        debugLine.grid_columnconfigure(1, minsize=minButtonSize)
         debugCheckBox = Tkinter.Checkbutton(debugLine, text=enableDebugString, command= lambda: self.toggle_debug(controller))
-        debugCheckBox.grid()
+        debugCheckBox.grid(column=0, row=0, sticky="W")
         # Step button
-        stepButtonFrame = Tkinter.Frame(debugLine)
-        stepButtonFrame.grid(column=1, row=1, sticky="EW")
-        stepButtonFrame.grid_columnconfigure(0, minsize=minButtonSize)
-        stepButton = Tkinter.Button(stepButtonFrame, text="Step", command=lambda: self.step_debug(controller))
-        stepButton.grid(sticky="E")
+        stepButton = Tkinter.Button(debugLine, text="Step", command=lambda: self.step_debug(controller))
+        stepButton.grid(column=1, row=0, sticky="EW")
 
         # Frame to hold Non debug stuff
         appFrame = Tkinter.Frame(self, width=500)
@@ -506,6 +457,9 @@ class messagingPage(Tkinter.Frame):
         self.conversationHist = Tkinter.Text(conversationFrame, wrap=Tkinter.WORD,
                                            bg="white",
                                            fg="black",
+                                           width=debugBoxWidth,
+                                           height=debugBoxHeight,
+                                           font=fontFamily,
                                            #yscrollcommand=scrollbar_message.set,
                                            state=Tkinter.DISABLED)
         self.conversationHist.grid(column=0, row=0, padx=x_right_padding,
@@ -521,19 +475,27 @@ class messagingPage(Tkinter.Frame):
         buttonFrame = Tkinter.Frame(appFrame)
         buttonFrame.grid(column=0, row=1, sticky="EW")
         buttonFrame.grid_columnconfigure(0, weight=1)
+        buttonFrame.grid_columnconfigure(1, minsize=minButtonSize)
         self.enterMessageBox = Tkinter.Entry(buttonFrame)
         self.enterMessageBox.grid(column=0, row=0, padx=x_right_padding,
                              sticky="EW")
+        self.enterMessageBox.bind("<Return>", lambda _: self.onSendClick(controller))
         sendButton = Tkinter.Button(buttonFrame, text="Send", command=lambda: self.onSendClick(controller))
         sendButton.grid(column=1, row=0, sticky="EW")
-        buttonFrame.grid_columnconfigure(1, minsize=minButtonSize)
+
+        # Set focus to messaging box
+        #self.setEnterMessageBoxFocus()
 
     def onDisconnectClick(self, controller):
-        controller.show_frame(startPage)
+        controller.destroy()
 
     def onSendClick(self, controller):
         threading.Thread(target= lambda: controller.send_vpn_message(self.enterMessageBox.get()), name="UI Loop").start()
         self.enterMessageBox.delete(0, len(self.enterMessageBox.get()))
+
+    def setEnterMessageBoxFocus(self):
+        self.enterMessageBox.focus_set()
+        self.enterMessageBox.selection_range(0, Tkinter.END)
 
     def log(self, message):
         self.conversationHist.config(state=Tkinter.NORMAL)
@@ -542,14 +504,21 @@ class messagingPage(Tkinter.Frame):
         self.conversationHist.config(state=Tkinter.DISABLED)
 
     def debug(self, message):
-        self.debugMessageBox.config(state=Tkinter.NORMAL)
-        self.debugMessageBox.insert("@0,0", message + "\n\n")
-        self.debugMessageBox.insert("@0,0", "Received: " + str(datetime.datetime.now()) + "\n")
-        self.debugMessageBox.config(state=Tkinter.DISABLED)
+        self.debugLog.config(state=Tkinter.NORMAL)
+        self.debugLog.insert("@0,0", message + "\n\n")
+        self.debugLog.insert("@0,0", "Received: " + str(datetime.datetime.now()) + "\n")
+        self.debugLog.config(state=Tkinter.DISABLED)
+
+    def debugRaw(self, message):
+        self.debugRawMessageBox.config(state=Tkinter.NORMAL)
+        self.debugRawMessageBox.insert("@0,0", message + "\n\n")
+        self.debugRawMessageBox.insert("@0,0", "Received: " + str(datetime.datetime.now()) + "\n")
+        self.debugRawMessageBox.config(state=Tkinter.DISABLED)
 
     def init_loggers(self, controller):
         controller.vpn_client.set_logger(lambda message: self.log(message))
         controller.vpn_client.set_debugger(lambda message: self.debug(message))
+        controller.vpn_client.set_debugger_raw(lambda message: self.debugRaw(message))
 
     def toggle_debug(self, controller):
         controller.vpn_client.toggle_step_through_mode()
